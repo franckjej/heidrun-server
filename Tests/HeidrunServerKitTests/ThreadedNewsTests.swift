@@ -59,4 +59,25 @@ struct ThreadedNewsTests {
             #expect(thread.elements.first?.title == "Welcome")
         }
     }
+
+    @Test("postNewsThread appends to the category and a subsequent fetch sees it")
+    func postNewThread() async throws {
+        try await ServerTestHelpers.withRunningServer(configuration: Self.configuration) { _, port in
+            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Alice")
+
+            try await client.postNewsThread(
+                at: RemotePath(components: ["General", "Announcements"]),
+                parentThreadID: 0,
+                title: "Fresh post",
+                type: "text/plain",
+                body: "Hello from the integration test"
+            )
+
+            let threads = try await client.fetchNewsThreads(
+                at: RemotePath(components: ["General", "Announcements"])
+            )
+            let titles = threads.compactMap { $0.elements.first?.title }
+            #expect(titles.contains("Fresh post"))
+        }
+    }
 }

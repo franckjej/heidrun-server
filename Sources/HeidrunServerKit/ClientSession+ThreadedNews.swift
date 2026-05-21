@@ -60,6 +60,29 @@ extension ClientSession {
         ))
     }
 
+    /// Handle `postNewsThread` (410): append a new post to the
+    /// addressed category and reply success / failure. Real Hotline
+    /// servers don't broadcast a notification — the client polls
+    /// fetchNewsThreads — so this handler is reply-only.
+    func handlePostNewsThread(header: PacketHeader, fields: [PacketField]) async {
+        let path = newsPath(from: fields)
+        let title = fields.string(.newsTitle, encoding: stringEncoding) ?? "(untitled)"
+        let body = fields.string(.newsData, encoding: stringEncoding) ?? ""
+        let post = NewsPost(title: title, author: nickname, body: body)
+        let ok = await news.appendPost(at: path, post: post)
+        if ok {
+            try? await writer(PacketEncoder.emptyReply(
+                taskNumber: header.taskNumber,
+                transactionID: 410
+            ))
+        } else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: 410
+            ))
+        }
+    }
+
     /// Decode the `.newsPath` (325) field into `[String]`. Defaults to
     /// `[]` (root) when the field is missing or malformed.
     fileprivate func newsPath(from fields: [PacketField]) -> [String] {

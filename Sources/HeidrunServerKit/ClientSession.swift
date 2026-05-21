@@ -127,6 +127,9 @@ public actor ClientSession {
         case 400:
             await handleGetNewsThread(header: header, fields: fields)
             return true
+        case 410:
+            await handlePostNewsThread(header: header, fields: fields)
+            return true
         default:
             return true
         }
