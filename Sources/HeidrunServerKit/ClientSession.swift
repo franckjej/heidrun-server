@@ -9,6 +9,7 @@ import HeidrunCore
 public actor ClientSession {
     let registry: UserRegistry
     let news: NewsTree
+    let accounts: AccountStore
     let configuration: ServerConfiguration
     let stringEncoding: String.Encoding
     let writer: @Sendable (Data) async throws -> Void
@@ -17,10 +18,14 @@ public actor ClientSession {
     var socketID: UInt16 = 0
     var nickname: String = "guest"
     var icon: UInt16 = 0
+    /// Account row that authenticated the current session, or `nil`
+    /// for guest connections (empty login). Used by privilege checks.
+    var authenticatedAccount: Account?
 
     public init(
         registry: UserRegistry,
         news: NewsTree,
+        accounts: AccountStore,
         configuration: ServerConfiguration,
         stringEncoding: String.Encoding,
         writer: @escaping @Sendable (Data) async throws -> Void,
@@ -28,6 +33,7 @@ public actor ClientSession {
     ) {
         self.registry = registry
         self.news = news
+        self.accounts = accounts
         self.configuration = configuration
         self.stringEncoding = stringEncoding
         self.writer = writer
@@ -141,6 +147,18 @@ public actor ClientSession {
         case 110:
             await handleKick(header: header, fields: fields)
             return true
+        case 350:
+            await handleCreateLogin(header: header, fields: fields)
+            return true
+        case 351:
+            await handleDeleteLogin(header: header, fields: fields)
+            return true
+        case 352:
+            await handleOpenLogin(header: header, fields: fields)
+            return true
+        case 353:
+            await handleModifyLogin(header: header, fields: fields)
+            return true
         default:
             return true
         }
@@ -149,6 +167,24 @@ public actor ClientSession {
     private func handleLogin(header: PacketHeader, fields: [PacketField]) async {
         let nick = fields.string(.nickname, encoding: stringEncoding) ?? "guest"
         let iconValue = fields.uint16(.icon) ?? 0
+        let login = Self.obfuscatedString(.login, from: fields, encoding: stringEncoding) ?? ""
+        let password = Self.obfuscatedString(.password, from: fields, encoding: stringEncoding) ?? ""
+
+        // Authenticate when a login was supplied. Empty login = guest.
+        // A non-empty login that doesn't match an account, or a wrong
+        // password, fails with errorID=1 and no user-list registration.
+        if !login.isEmpty {
+            let verified = try? await accounts.verifyCredentials(login: login, password: password)
+            guard let account = verified else {
+                try? await writer(PacketEncoder.errorReply(
+                    taskNumber: header.taskNumber,
+                    transactionID: 107
+                ))
+                return
+            }
+            self.authenticatedAccount = account
+        }
+
         self.nickname = nick
         self.icon = iconValue
 
@@ -164,8 +200,6 @@ public actor ClientSession {
         )
         try? await writer(reply)
 
-        // Tell every other session about the new arrival so their user
-        // lists refresh.
         let member = UserRegistry.Member(
             socketID: assigned,
             nickname: nick,
@@ -180,6 +214,21 @@ public actor ClientSession {
         if let text = configuration.agreement {
             try? await writer(PacketEncoder.agreementPush(text: text, encoding: stringEncoding))
         }
+    }
+
+    /// Read an obfuscated string field (login / password): each byte is
+    /// XOR'd with `0xFF` on the wire; decoding inverts that.
+    nonisolated static func obfuscatedString(
+        _ key: HotlineObjectKey,
+        from fields: [PacketField],
+        encoding: String.Encoding
+    ) -> String? {
+        guard let field = fields.first(key) else { return nil }
+        var bytes = Array(field.data)
+        for index in bytes.indices {
+            bytes[index] ^= 0xFF
+        }
+        return String(data: Data(bytes), encoding: encoding)
     }
 
     private func handleUserList(header: PacketHeader) async {

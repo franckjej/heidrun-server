@@ -188,6 +188,33 @@ enum PacketEncoder {
         )
     }
 
+    /// Reply to `openLogin` (352). Carries the account's nickname and
+    /// 8-byte privileges blob — password material never leaves the
+    /// server even for admin reads. Real Hotline servers send back the
+    /// XOR-obfuscated password too; we deliberately omit it because
+    /// HeidrunServer only stores PBKDF2 hashes and can't reverse them.
+    static func openLoginReply(
+        taskNumber: UInt32,
+        account: Account,
+        encoding: String.Encoding
+    ) -> Data {
+        var permissionBytes = [UInt8](repeating: 0, count: 8)
+        for index in 0..<8 {
+            permissionBytes[index] = UInt8(
+                truncatingIfNeeded: account.permissions >> (index * 8)
+            )
+        }
+        return PacketCodec.encode(
+            classID: 1,
+            transactionID: 352,
+            taskNumber: taskNumber,
+            fields: [
+                PacketField.string(.nickname, account.nickname, encoding: encoding),
+                PacketField(key: .privileges, data: Data(permissionBytes))
+            ]
+        )
+    }
+
     /// Reply to `getThreadedNewsBundles` (370). Each field is a single
     /// `newsBundleEntry` (object 323) describing one folder/category
     /// at the requested path.
