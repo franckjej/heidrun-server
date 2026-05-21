@@ -13,6 +13,7 @@ public actor HeidrunServer {
     private let stringEncoding: String.Encoding
     private let registry: UserRegistry
     private let news: NewsTree
+    private var accounts: AccountStore?
     private var group: (any EventLoopGroup)?
     private var listenerChannel: (any Channel)?
 
@@ -33,11 +34,29 @@ public actor HeidrunServer {
     /// client's 12-byte handshake races our handler installation and
     /// the session reads zero bytes forever.
     public func start() async throws -> UInt16 {
+        let accountStore = try AccountStore(
+            path: configuration.accountStorePath,
+            passwordRounds: configuration.passwordRounds
+        )
+        if let bootstrap = configuration.bootstrapAdmin {
+            _ = try await accountStore.bootstrapIfEmpty(
+                login: bootstrap.login,
+                password: bootstrap.password,
+                nickname: bootstrap.nickname,
+                permissions: AccountPrivilege.disconnectUsers.rawValue
+                    | AccountPrivilege.createAccounts.rawValue
+                    | AccountPrivilege.deleteAccounts.rawValue
+                    | AccountPrivilege.modifyAccounts.rawValue
+            )
+        }
+        self.accounts = accountStore
+
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         self.group = eventLoopGroup
 
         let registryCopy = self.registry
         let newsCopy = self.news
+        let accountsCopy = accountStore
         let configurationCopy = self.configuration
         let stringEncodingCopy = self.stringEncoding
 
@@ -56,6 +75,7 @@ public actor HeidrunServer {
                             inbound: inboundStream,
                             registry: registryCopy,
                             news: newsCopy,
+                            accounts: accountsCopy,
                             configuration: configurationCopy,
                             stringEncoding: stringEncodingCopy
                         )
@@ -80,12 +100,14 @@ public actor HeidrunServer {
         inbound: AsyncStream<Data>,
         registry: UserRegistry,
         news: NewsTree,
+        accounts: AccountStore,
         configuration: ServerConfiguration,
         stringEncoding: String.Encoding
     ) async {
         let session = ClientSession(
             registry: registry,
             news: news,
+            accounts: accounts,
             configuration: configuration,
             stringEncoding: stringEncoding,
             writer: { packet in
@@ -103,16 +125,11 @@ public actor HeidrunServer {
     }
 }
 
-/// Thin @unchecked Sendable wrapper for values that are documented as
-/// thread-safe but are not formally marked `Sendable` in their library
-/// (NIO's `Channel` is the primary example here).
 private final class UncheckedSendableBox<Wrapped>: @unchecked Sendable {
     let value: Wrapped
     init(_ value: Wrapped) { self.value = value }
 }
 
-/// Inbound handler installed on each child channel. Drains ByteBuffer
-/// chunks into the session's inbound AsyncStream<Data>.
 private final class SessionIOHandler: ChannelInboundHandler, @unchecked Sendable {
     typealias InboundIn = ByteBuffer
 
