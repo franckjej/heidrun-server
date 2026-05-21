@@ -155,4 +155,42 @@ struct ServerIntegrationTests {
             #expect(sawAgreement)
         }
     }
+
+    @Test("when a client disconnects, remaining clients see userLeft (transID 302)")
+    func userLeavesOnDisconnect() async throws {
+        try await withRunningServer { _, port in
+            let alice = try await connectAndLogin(port: port, nickname: "Alice")
+            let bob = try await connectAndLogin(port: port, nickname: "Bob")
+            try await Task.sleep(for: .milliseconds(200))
+
+            let observer = Task { () -> UInt16? in
+                for await event in alice.events {
+                    if case let .userLeft(socket) = event {
+                        return socket
+                    }
+                }
+                return nil
+            }
+
+            await bob.disconnect()
+
+            let leftSocket: UInt16? = try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    try await Task.sleep(for: .seconds(2))
+                    throw NSError(
+                        domain: "ServerIntegrationTests",
+                        code: 3,
+                        userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for userLeft"]
+                    )
+                }
+                group.addTask { _ = await observer.value }
+                try await group.next()
+                group.cancelAll()
+                return await observer.value
+            }
+
+            #expect(leftSocket != nil)
+            #expect(leftSocket != 0)
+        }
+    }
 }
