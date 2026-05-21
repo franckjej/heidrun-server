@@ -14,7 +14,6 @@ public actor HeidrunServer {
     private let registry: UserRegistry
     private var group: (any EventLoopGroup)?
     private var listenerChannel: (any Channel)?
-    private var acceptTask: Task<Void, Never>?
 
     public init(
         configuration: ServerConfiguration,
@@ -25,92 +24,60 @@ public actor HeidrunServer {
         self.registry = UserRegistry()
     }
 
-    /// Bind the listener, spawn the accept loop, and return the bound
-    /// port. Throws if the bind fails (e.g. port in use).
+    /// Bind the listener and return the bound port. The
+    /// `childChannelInitializer` installs the inbound-byte handler and
+    /// spawns the per-session async task **synchronously** on the
+    /// child's event loop, before any reads happen — otherwise the
+    /// client's 12-byte handshake races our handler installation and
+    /// the session reads zero bytes forever.
     public func start() async throws -> UInt16 {
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         self.group = eventLoopGroup
+
+        let registryCopy = self.registry
+        let configurationCopy = self.configuration
+        let stringEncodingCopy = self.stringEncoding
 
         let bootstrap = ServerBootstrap(group: eventLoopGroup)
             .serverChannelOption(ChannelOptions.backlog, value: 64)
             .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+            .childChannelInitializer { childChannel in
+                let (inboundStream, continuation) = AsyncStream<Data>.makeStream()
+                let readerHandler = SessionIOHandler(continuation: continuation)
+                return childChannel.pipeline.addHandler(readerHandler).map {
+                    let channelBox = UncheckedSendableBox(childChannel)
+                    Task {
+                        await Self.runChildSession(
+                            channelBox: channelBox,
+                            inbound: inboundStream,
+                            registry: registryCopy,
+                            configuration: configurationCopy,
+                            stringEncoding: stringEncodingCopy
+                        )
+                    }
+                }
+            }
 
-        let channel = try await bootstrap.bind(host: "127.0.0.1", port: Int(configuration.port))
-            .get()
+        let channel = try await bootstrap.bind(host: "127.0.0.1", port: Int(configuration.port)).get()
         self.listenerChannel = channel
-
-        let assignedPort = UInt16(channel.localAddress?.port ?? 0)
-
-        let registryCopy = self.registry
-        let configurationCopy = self.configuration
-        let stringEncodingCopy = self.stringEncoding
-        self.acceptTask = Task {
-            await Self.runAcceptLoop(
-                channel: channel,
-                registry: registryCopy,
-                configuration: configurationCopy,
-                stringEncoding: stringEncodingCopy
-            )
-        }
-
-        return assignedPort
+        return UInt16(channel.localAddress?.port ?? 0)
     }
 
     public func stop() async {
-        acceptTask?.cancel()
-        acceptTask = nil
         try? await listenerChannel?.close().get()
         try? await group?.shutdownGracefully()
         listenerChannel = nil
         group = nil
     }
 
-    private static func runAcceptLoop(
-        channel: any Channel,
-        registry: UserRegistry,
-        configuration: ServerConfiguration,
-        stringEncoding: String.Encoding
-    ) async {
-        let acceptedChannels = await Self.installAcceptHandler(on: channel)
-        for await childChannel in acceptedChannels {
-            Task {
-                await Self.runChildSession(
-                    channel: childChannel,
-                    registry: registry,
-                    configuration: configuration,
-                    stringEncoding: stringEncoding
-                )
-            }
-        }
-    }
-
-    private static func installAcceptHandler(on parent: any Channel) async -> AsyncStream<any Channel> {
-        await withCheckedContinuation { continuation in
-            parent.eventLoop.execute {
-                let (stream, continuationHandle) = AsyncStream<any Channel>.makeStream()
-                let handler = AcceptHandler(continuation: continuationHandle)
-                _ = parent.pipeline.addHandler(handler)
-                continuation.resume(returning: stream)
-            }
-        }
-    }
-
     private static func runChildSession(
-        channel: any Channel,
+        channelBox: UncheckedSendableBox<any Channel>,
+        inbound: AsyncStream<Data>,
         registry: UserRegistry,
         configuration: ServerConfiguration,
         stringEncoding: String.Encoding
     ) async {
-        let (inboundStream, inboundContinuation) = AsyncStream<Data>.makeStream()
-        let readerHandler = SessionIOHandler(continuation: inboundContinuation)
-        try? await channel.pipeline.addHandler(readerHandler).get()
-
-        // NIO's Channel is thread-safe per its documentation even though it
-        // isn't formally marked Sendable in the library. Wrap channel
-        // references in @unchecked Sendable boxes so the Swift 6 compiler
-        // accepts them across the actor/task boundary without restructuring.
-        let channelBox = UncheckedSendableBox(channel)
         let session = ClientSession(
             registry: registry,
             configuration: configuration,
@@ -125,8 +92,8 @@ public actor HeidrunServer {
                 try? await channelBox.value.close().get()
             }
         )
-        await session.run(inboundStream)
-        try? await channel.close().get()
+        await session.run(inbound)
+        try? await channelBox.value.close().get()
     }
 }
 
@@ -136,28 +103,6 @@ public actor HeidrunServer {
 private final class UncheckedSendableBox<Wrapped>: @unchecked Sendable {
     let value: Wrapped
     init(_ value: Wrapped) { self.value = value }
-}
-
-/// Inbound handler installed on the parent (listener) channel. Forwards
-/// each accepted child channel out into an `AsyncStream` so the accept
-/// loop can iterate it with `for await`.
-private final class AcceptHandler: ChannelInboundHandler, @unchecked Sendable {
-    typealias InboundIn = any Channel
-
-    private let continuation: AsyncStream<any Channel>.Continuation
-
-    init(continuation: AsyncStream<any Channel>.Continuation) {
-        self.continuation = continuation
-    }
-
-    func channelRead(context: ChannelHandlerContext, data: NIOAny) {
-        let child = self.unwrapInboundIn(data)
-        continuation.yield(child)
-    }
-
-    func channelInactive(context: ChannelHandlerContext) {
-        continuation.finish()
-    }
 }
 
 /// Inbound handler installed on each child channel. Drains ByteBuffer
