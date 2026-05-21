@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+Install:
+  sudo install -m 0644 \
+    org.tastybytes.heidrun-server.plist \
+    /Library/LaunchDaemons/
+
+Load:
+  sudo launchctl bootstrap system \
+    /Library/LaunchDaemons/org.tastybytes.heidrun-server.plist
+
+Unload:
+  sudo launchctl bootout system/org.tastybytes.heidrun-server
+
+State directories the plist expects:
+  /usr/local/etc/heidrun-server/config.toml
+  /usr/local/var/heidrun/heidrun.sqlite
+  /usr/local/var/heidrun/files/
+
+User context (UserName) defaults to `_heidrun` — create the service
+account once via System Settings → Users & Groups → "+", or via
+`dscl`. If you'd rather run as your own user during development,
+remove the UserName/GroupName keys.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>org.tastybytes.heidrun-server</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/heidrun-server</string>
+    </array>
+
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HEIDRUN_CONFIG</key>
+        <string>/usr/local/etc/heidrun-server/config.toml</string>
+        <key>HEIDRUN_LOG_LEVEL</key>
+        <string>info</string>
+    </dict>
+
+    <key>WorkingDirectory</key>
+    <string>/usr/local/var/heidrun</string>
+
+    <!--
+      RunAtLoad starts the daemon at boot. KeepAlive restarts it if it
+      crashes or exits non-zero. SIGTERM trips the server's graceful
+      shutdown path so launchctl bootout exits cleanly.
+    -->
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+        <key>Crashed</key>
+        <true/>
+    </dict>
+
+    <!-- Standard output + error → /usr/local/var/log/heidrun-server.*.log. -->
+    <key>StandardOutPath</key>
+    <string>/usr/local/var/log/heidrun-server.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/usr/local/var/log/heidrun-server.err.log</string>
+
+    <!-- Optional dedicated service account; remove for dev runs. -->
+    <key>UserName</key>
+    <string>_heidrun</string>
+    <key>GroupName</key>
+    <string>_heidrun</string>
+
+    <!-- Soft file-descriptor cap. Bump for busy servers. -->
+    <key>SoftResourceLimits</key>
+    <dict>
+        <key>NumberOfFiles</key>
+        <integer>4096</integer>
+    </dict>
+</dict>
+</plist>

@@ -1,0 +1,43 @@
+# Convenience compose file for HeidrunServer.
+#
+# Run from the repo root:
+#   docker compose -f Packages/HeidrunServer/docker-compose.yml up -d
+#
+# Stop:
+#   docker compose -f Packages/HeidrunServer/docker-compose.yml down
+#
+# State persists in the `heidrun-data` named volume (DB + files root).
+# To change the admin password, edit the `HEIDRUN_ADMIN_PASSWORD`
+# entry below before the first `up` (the seed only fires against an
+# empty DB). After first launch, change passwords via the modifyLogin
+# (353) admin transaction from a logged-in client.
+
+services:
+  heidrun:
+    image: heidrun-server:latest
+    build:
+      context: ../..
+      dockerfile: Packages/HeidrunServer/Dockerfile
+    container_name: heidrun-server
+    restart: unless-stopped
+    ports:
+      - "5500:5500"          # control channel
+      - "5501:5501"          # HTXF transfer side-channel
+    volumes:
+      - heidrun-data:/var/lib/heidrun
+    environment:
+      # Required: a strong bootstrap admin password before first run.
+      HEIDRUN_ADMIN_PASSWORD: "CHANGE_ME_BEFORE_FIRST_RUN"
+      HEIDRUN_SERVER_NAME: "Heidrun"
+      HEIDRUN_LOG_LEVEL: "info"
+    # Heidrun clients don't have a TCP health-probe path; the
+    # transfer port being open is a workable proxy. Swap to a real
+    # protocol check if the upcoming admin CLI ships one.
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 5500 || exit 1"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  heidrun-data:
