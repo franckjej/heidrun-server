@@ -41,6 +41,14 @@ public actor ClientSession {
         try? await writer(packet)
     }
 
+    /// Drop the underlying TCP connection. The session's `run` loop
+    /// observes the close, runs its normal disconnect-cleanup path
+    /// (unregister + broadcast `userLeft`), and returns. Used by the
+    /// kick handler to disconnect a target by socketID.
+    public func disconnectNow() async {
+        await closer()
+    }
+
     /// Drive the connection from raw inbound bytes through handshake,
     /// frame loop, and clean disconnect. Returns when the client
     /// disconnects (gracefully or not).
@@ -129,6 +137,9 @@ public actor ClientSession {
             return true
         case 410:
             await handlePostNewsThread(header: header, fields: fields)
+            return true
+        case 110:
+            await handleKick(header: header, fields: fields)
             return true
         default:
             return true
