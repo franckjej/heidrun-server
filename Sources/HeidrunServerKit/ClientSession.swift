@@ -10,6 +10,7 @@ public actor ClientSession {
     let registry: UserRegistry
     let news: NewsTree
     let accounts: AccountStore
+    let files: FileVault
     let configuration: ServerConfiguration
     let stringEncoding: String.Encoding
     let writer: @Sendable (Data) async throws -> Void
@@ -26,6 +27,7 @@ public actor ClientSession {
         registry: UserRegistry,
         news: NewsTree,
         accounts: AccountStore,
+        files: FileVault,
         configuration: ServerConfiguration,
         stringEncoding: String.Encoding,
         writer: @escaping @Sendable (Data) async throws -> Void,
@@ -34,6 +36,7 @@ public actor ClientSession {
         self.registry = registry
         self.news = news
         self.accounts = accounts
+        self.files = files
         self.configuration = configuration
         self.stringEncoding = stringEncoding
         self.writer = writer
@@ -158,6 +161,12 @@ public actor ClientSession {
             return true
         case 353:
             await handleModifyLogin(header: header, fields: fields)
+            return true
+        case 200:
+            await handleListFiles(header: header, fields: fields)
+            return true
+        case 206:
+            await handleFileInfo(header: header, fields: fields)
             return true
         default:
             return true

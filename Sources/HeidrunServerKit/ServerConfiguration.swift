@@ -29,6 +29,10 @@ public struct ServerConfiguration: Sendable {
     /// Optional bootstrap admin — seeded by `HeidrunServer.start()` if
     /// the accounts table is empty.
     public var bootstrapAdmin: BootstrapAdmin?
+    /// Root directory for the file system. `nil` allocates an
+    /// ephemeral tempdir (useful for tests). Production deployments
+    /// point this at a persistent location.
+    public var filesRootPath: String?
 
     public init(
         port: UInt16 = 5500,
@@ -38,7 +42,8 @@ public struct ServerConfiguration: Sendable {
         newsSeed: NewsTree.Seed? = nil,
         accountStorePath: String? = nil,
         passwordRounds: Int = PasswordHash.defaultRounds,
-        bootstrapAdmin: BootstrapAdmin? = nil
+        bootstrapAdmin: BootstrapAdmin? = nil,
+        filesRootPath: String? = nil
     ) {
         self.port = port
         self.serverName = serverName
@@ -48,5 +53,6 @@ public struct ServerConfiguration: Sendable {
         self.accountStorePath = accountStorePath
         self.passwordRounds = passwordRounds
         self.bootstrapAdmin = bootstrapAdmin
+        self.filesRootPath = filesRootPath
     }
 }
