@@ -12,6 +12,7 @@ import Foundation
 public actor TransferRegistry {
     public enum Pending: Sendable {
         case download(bytes: Data, offset: UInt32)
+        case upload(path: [String], name: String, declaredSize: UInt32, resume: Bool)
     }
 
     private var pending: [UInt32: Pending] = [:]
@@ -26,6 +27,26 @@ public actor TransferRegistry {
         nextID &+= 1
         if nextID == 0 { nextID = 1 }                    // skip 0; treat as "no transfer"
         pending[assigned] = .download(bytes: bytes, offset: offset)
+        return assigned
+    }
+
+    /// Register a pending upload. Returns the allocated transferID
+    /// that the control-channel reply carries back to the client.
+    public func registerUpload(
+        path: [String],
+        name: String,
+        declaredSize: UInt32,
+        resume: Bool
+    ) -> UInt32 {
+        let assigned = nextID
+        nextID &+= 1
+        if nextID == 0 { nextID = 1 }
+        pending[assigned] = .upload(
+            path: path,
+            name: name,
+            declaredSize: declaredSize,
+            resume: resume
+        )
         return assigned
     }
 

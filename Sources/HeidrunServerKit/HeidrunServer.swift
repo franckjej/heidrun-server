@@ -104,7 +104,8 @@ public actor HeidrunServer {
                         await Self.runTransferChannel(
                             channelBox: channelBox,
                             inbound: inboundStream,
-                            transfers: transfersCopy
+                            transfers: transfersCopy,
+                            files: filesCopy
                         )
                     }
                 }
@@ -212,12 +213,14 @@ public actor HeidrunServer {
     }
 
     /// One HTXF connection. Reads the 16-byte preamble, looks up the
-    /// transferID, streams the bytes back, closes. Errors and unknown
-    /// IDs both close the channel immediately.
+    /// transferID, then either streams data-fork bytes back (download)
+    /// or drains the FILP/INFO/DATA/MACR envelope and commits it to
+    /// the vault (upload).
     private static func runTransferChannel(
         channelBox: UncheckedSendableBox<any Channel>,
         inbound: AsyncStream<Data>,
-        transfers: TransferRegistry
+        transfers: TransferRegistry,
+        files: FileVault
     ) async {
         var stream = ByteStream(source: inbound)
         defer { Task { try? await channelBox.value.close().get() } }
@@ -235,6 +238,10 @@ public actor HeidrunServer {
             | UInt32(preamble[base + 5]) << 16
             | UInt32(preamble[base + 6]) << 8
             | UInt32(preamble[base + 7])
+        let preambleSize = UInt32(preamble[base + 8]) << 24
+            | UInt32(preamble[base + 9]) << 16
+            | UInt32(preamble[base + 10]) << 8
+            | UInt32(preamble[base + 11])
         guard let pending = await transfers.claim(transferID: transferID) else { return }
         switch pending {
         case let .download(bytes, offset):
@@ -250,6 +257,37 @@ public actor HeidrunServer {
                 try? await outChannel.writeAndFlush(buffer).get()
                 current = end
             }
+        case let .upload(path, name, declaredSize, resume):
+            // The client sometimes re-handshakes once it knows the
+            // final framing size; peek for a second "HTXF" header at
+            // the start of the data stream. (Matches the test
+            // server's drainUpload in HeidrunTestServer/Sources/
+            // HeidrunTestServerKit/TransferListener.swift.)
+            let total: UInt32
+            var payload = Data()
+            do {
+                let firstChunk = try await stream.receiveExactly(16)
+                if firstChunk.prefix(4) == Data([0x48, 0x54, 0x58, 0x46]) {
+                    let chunkBase = firstChunk.startIndex
+                    total = UInt32(firstChunk[chunkBase + 8]) << 24
+                        | UInt32(firstChunk[chunkBase + 9]) << 16
+                        | UInt32(firstChunk[chunkBase + 10]) << 8
+                        | UInt32(firstChunk[chunkBase + 11])
+                } else {
+                    payload.append(firstChunk)
+                    total = preambleSize == 0 ? declaredSize : preambleSize
+                }
+                let remaining = Int(total) - payload.count
+                if remaining > 0 {
+                    let rest = try await stream.receiveExactly(remaining)
+                    payload.append(rest)
+                }
+            } catch {
+                return
+            }
+            guard let envelope = try? UploadFraming.decode(payload) else { return }
+            let storedName = envelope.fileName.isEmpty ? name : envelope.fileName
+            _ = await files.putFile(at: path, name: storedName, data: envelope.data, resume: resume)
         }
     }
 }

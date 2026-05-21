@@ -86,6 +86,183 @@ extension ClientSession {
         ))
     }
 
+    /// Handle `uploadFile` (203). Mirrors download: register a pending
+    /// transfer of kind `.upload`, reply with the assigned transferID.
+    /// The client then opens an HTXF connection on port + 1 carrying
+    /// that ID and the FILP envelope.
+    func handleUploadFile(header: PacketHeader, fields: [PacketField]) async {
+        let path = filePath(from: fields)
+        guard let name = fields.string(.fileName, encoding: stringEncoding) else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: 203
+            ))
+            return
+        }
+        let declaredSize = fields.uint32(.transferSize) ?? 0
+        let resume = (fields.uint16(.parameter) ?? 0) == 1
+        let transferID = await transfers.registerUpload(
+            path: path,
+            name: name,
+            declaredSize: declaredSize,
+            resume: resume
+        )
+        try? await writer(PacketEncoder.uploadFileReply(
+            taskNumber: header.taskNumber,
+            transferID: transferID
+        ))
+    }
+
+    /// Handle `deleteEntry` (204).
+    func handleDeleteEntry(header: PacketHeader, fields: [PacketField]) async {
+        let path = filePath(from: fields)
+        guard let name = fields.string(.fileName, encoding: stringEncoding) else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: 204
+            ))
+            return
+        }
+        let ok = await files.delete(at: path, name: name)
+        if ok {
+            try? await writer(PacketEncoder.emptyReply(
+                taskNumber: header.taskNumber,
+                transactionID: 204
+            ))
+        } else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: 204
+            ))
+        }
+    }
+
+    /// Handle `createFolder` (205).
+    func handleCreateFolder(header: PacketHeader, fields: [PacketField]) async {
+        let path = filePath(from: fields)
+        guard let name = fields.string(.fileName, encoding: stringEncoding) else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: 205
+            ))
+            return
+        }
+        let ok = await files.createFolder(at: path, name: name)
+        if ok {
+            try? await writer(PacketEncoder.emptyReply(
+                taskNumber: header.taskNumber,
+                transactionID: 205
+            ))
+        } else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: 205
+            ))
+        }
+    }
+
+    /// Handle `setFileInfo` (207). Accepts a rename via `.fileRename`
+    /// (211) and/or a comment via `.fileComment` (210). When both are
+    /// present, the rename runs first and the comment is applied to
+    /// the new path. Empty / missing fields are no-ops.
+    func handleSetFileInfo(header: PacketHeader, fields: [PacketField]) async {
+        let path = filePath(from: fields)
+        guard let name = fields.string(.fileName, encoding: stringEncoding) else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: 207
+            ))
+            return
+        }
+        var currentName = name
+        if let newName = fields.string(.fileRename, encoding: stringEncoding), !newName.isEmpty {
+            let renamed = await files.rename(at: path, from: currentName, to: newName)
+            guard renamed else {
+                try? await writer(PacketEncoder.errorReply(
+                    taskNumber: header.taskNumber,
+                    transactionID: 207
+                ))
+                return
+            }
+            currentName = newName
+        }
+        if let comment = fields.string(.fileComment, encoding: stringEncoding) {
+            let saved = await files.setComment(at: path, name: currentName, comment: comment)
+            guard saved else {
+                try? await writer(PacketEncoder.errorReply(
+                    taskNumber: header.taskNumber,
+                    transactionID: 207
+                ))
+                return
+            }
+        }
+        try? await writer(PacketEncoder.emptyReply(
+            taskNumber: header.taskNumber,
+            transactionID: 207
+        ))
+    }
+
+    /// Handle `moveEntry` (208). The new parent path arrives in the
+    /// `.destinationPath` field (key 212).
+    func handleMoveEntry(header: PacketHeader, fields: [PacketField]) async {
+        let sourcePath = filePath(from: fields)
+        let destinationPath = destinationFilePath(from: fields)
+        guard let name = fields.string(.fileName, encoding: stringEncoding) else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: 208
+            ))
+            return
+        }
+        let ok = await files.move(from: sourcePath, name: name, to: destinationPath)
+        if ok {
+            try? await writer(PacketEncoder.emptyReply(
+                taskNumber: header.taskNumber,
+                transactionID: 208
+            ))
+        } else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: 208
+            ))
+        }
+    }
+
+    /// Handle `makeFileAlias` (209) — places a symlink at the
+    /// destination pointing back at the source. Filesystems without
+    /// symlink support will fail here; macOS + Linux are fine.
+    func handleMakeAlias(header: PacketHeader, fields: [PacketField]) async {
+        let sourcePath = filePath(from: fields)
+        let destinationPath = destinationFilePath(from: fields)
+        guard let name = fields.string(.fileName, encoding: stringEncoding) else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: 209
+            ))
+            return
+        }
+        let ok = await files.makeAlias(from: sourcePath, name: name, to: destinationPath)
+        if ok {
+            try? await writer(PacketEncoder.emptyReply(
+                taskNumber: header.taskNumber,
+                transactionID: 209
+            ))
+        } else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: 209
+            ))
+        }
+    }
+
+    fileprivate func destinationFilePath(from fields: [PacketField]) -> [String] {
+        guard let field = fields.first(.destinationPath),
+              let path = RemotePath(decoding: field.data, encoding: stringEncoding) else {
+            return []
+        }
+        return path.components
+    }
+
     /// Decode the `.filePath` (202) field into `[String]`. Defaults to
     /// `[]` (root) when the field is missing or malformed.
     fileprivate func filePath(from fields: [PacketField]) -> [String] {
