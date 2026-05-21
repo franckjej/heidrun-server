@@ -8,13 +8,28 @@ struct ServerIntegrationTests {
 
     // MARK: - Helpers
 
-    private func makeServer() async throws -> (server: HeidrunServer, port: UInt16) {
-        let server = HeidrunServer(configuration: ServerConfiguration(
+    /// Spin up a server on an ephemeral port, run `body`, and guarantee
+    /// `await server.stop()` completes before this function returns —
+    /// including on a thrown error from `body`. Eliminates the deferred-
+    /// Task race where one test's cleanup overlaps the next test's setup
+    /// and NIO emits "EventLoop already shut down" warnings.
+    private func withRunningServer<Result>(
+        configuration: ServerConfiguration = ServerConfiguration(
             port: 0,
             serverName: "Heidrun integration test"
-        ))
+        ),
+        body: (HeidrunServer, UInt16) async throws -> Result
+    ) async throws -> Result {
+        let server = HeidrunServer(configuration: configuration)
         let port = try await server.start()
-        return (server, port)
+        do {
+            let result = try await body(server, port)
+            await server.stop()
+            return result
+        } catch {
+            await server.stop()
+            throw error
+        }
     }
 
     private func connectAndLogin(
@@ -39,80 +54,105 @@ struct ServerIntegrationTests {
 
     @Test("client connects, logs in, sees itself in the user list")
     func loginAndUserList() async throws {
-        let (server, port) = try await makeServer()
-        defer { Task { await server.stop() } }
-
-        let client = try await connectAndLogin(port: port, nickname: "Frank")
-
-        // Give the server a moment to register the session
-        try await Task.sleep(for: .milliseconds(100))
-
-        let users = try await client.fetchUserList()
-        #expect(users.count == 1)
-        #expect(users.first?.nickname == "Frank")
+        try await withRunningServer { _, port in
+            let client = try await connectAndLogin(port: port, nickname: "Frank")
+            try await Task.sleep(for: .milliseconds(100))
+            let users = try await client.fetchUserList()
+            #expect(users.count == 1)
+            #expect(users.first?.nickname == "Frank")
+        }
     }
 
     @Test("two clients see each other in the user list and receive a chat broadcast")
     func twoClientChatBroadcast() async throws {
-        let (server, port) = try await makeServer()
-        defer { Task { await server.stop() } }
+        try await withRunningServer { _, port in
+            let alice = try await connectAndLogin(port: port, nickname: "Alice")
+            let bob = try await connectAndLogin(port: port, nickname: "Bob")
+            try await Task.sleep(for: .milliseconds(200))
 
-        let alice = try await connectAndLogin(port: port, nickname: "Alice")
-        let bob = try await connectAndLogin(port: port, nickname: "Bob")
+            let users = try await bob.fetchUserList()
+            let nicknames = Set(users.map(\.nickname))
+            #expect(nicknames == Set(["Alice", "Bob"]))
 
-        // Allow both sessions to be fully registered server-side
-        try await Task.sleep(for: .milliseconds(200))
-
-        let users = try await bob.fetchUserList()
-        let nicknames = Set(users.map(\.nickname))
-        #expect(nicknames == Set(["Alice", "Bob"]))
-
-        // Arm event collectors before sending the chat line so neither misses the push.
-        // Each collector returns a Bool via its Task value — no shared mutable state.
-        let aliceCollector = Task { () -> Bool in
-            for await event in alice.events {
-                if case let .chatReceived(_, message, _) = event, message.contains("hello") {
-                    return true
+            let aliceCollector = Task { () -> Bool in
+                for await event in alice.events {
+                    if case let .chatReceived(_, message, _) = event, message.contains("hello") {
+                        return true
+                    }
                 }
+                return false
             }
-            return false
-        }
-        let bobCollector = Task { () -> Bool in
-            for await event in bob.events {
-                if case let .chatReceived(_, message, _) = event, message.contains("hello") {
-                    return true
+            let bobCollector = Task { () -> Bool in
+                for await event in bob.events {
+                    if case let .chatReceived(_, message, _) = event, message.contains("hello") {
+                        return true
+                    }
                 }
+                return false
             }
-            return false
-        }
 
-        try await alice.sendChat("hello", in: nil, isAction: false)
+            try await alice.sendChat("hello", in: nil, isAction: false)
 
-        // Race both collectors against a 2-second timeout.
-        // The group resolves as soon as the first child finishes:
-        //   • timeout child throws  → propagates, test fails
-        //   • a collector child finishes first → we cancel the rest and check results
-        let (aliceReceivedChat, bobReceivedChat): (Bool, Bool) = try await withThrowingTaskGroup(
-            of: Void.self
-        ) { group in
-            group.addTask {
-                try await Task.sleep(for: .seconds(2))
-                throw NSError(
-                    domain: "ServerIntegrationTests",
-                    code: 1,
-                    userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for chat broadcast"]
-                )
+            let (aliceReceivedChat, bobReceivedChat): (Bool, Bool) = try await withThrowingTaskGroup(
+                of: Void.self
+            ) { group in
+                group.addTask {
+                    try await Task.sleep(for: .seconds(2))
+                    throw NSError(
+                        domain: "ServerIntegrationTests",
+                        code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for chat broadcast"]
+                    )
+                }
+                group.addTask { _ = await aliceCollector.value }
+                group.addTask { _ = await bobCollector.value }
+                try await group.next()
+                try await group.next()
+                group.cancelAll()
+                return (await aliceCollector.value, await bobCollector.value)
             }
-            group.addTask { _ = await aliceCollector.value }
-            group.addTask { _ = await bobCollector.value }
-            // Consume first two non-timeout completions (or throw on timeout)
-            try await group.next()
-            try await group.next()
-            group.cancelAll()
-            return (await aliceCollector.value, await bobCollector.value)
-        }
 
-        #expect(aliceReceivedChat)
-        #expect(bobReceivedChat)
+            #expect(aliceReceivedChat)
+            #expect(bobReceivedChat)
+        }
+    }
+
+    @Test("server pushes the configured agreement after login")
+    func pushesAgreement() async throws {
+        try await withRunningServer(
+            configuration: ServerConfiguration(
+                port: 0,
+                serverName: "Heidrun integration test",
+                agreement: "Welcome to the test server."
+            )
+        ) { _, port in
+            let client = try await connectAndLogin(port: port, nickname: "Frank")
+
+            let observer = Task { () -> Bool in
+                for await event in client.events {
+                    if case let .agreementReceived(text, _) = event, text.contains("test server") {
+                        return true
+                    }
+                }
+                return false
+            }
+
+            let sawAgreement: Bool = try await withThrowingTaskGroup(of: Void.self) { group in
+                group.addTask {
+                    try await Task.sleep(for: .seconds(2))
+                    throw NSError(
+                        domain: "ServerIntegrationTests",
+                        code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for agreement"]
+                    )
+                }
+                group.addTask { _ = await observer.value }
+                try await group.next()
+                group.cancelAll()
+                return await observer.value
+            }
+
+            #expect(sawAgreement)
+        }
     }
 }

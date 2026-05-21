@@ -142,7 +142,9 @@ public actor ClientSession {
             excluding: assigned
         )
 
-        // Agreement push lands in Task 8 — left out here on purpose.
+        if let text = configuration.agreement {
+            try? await writer(PacketEncoder.agreementPush(text: text, encoding: stringEncoding))
+        }
     }
 
     private func handleUserList(header: PacketHeader) async {
