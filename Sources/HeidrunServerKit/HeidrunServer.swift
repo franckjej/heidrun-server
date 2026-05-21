@@ -125,12 +125,14 @@ public actor HeidrunServer {
     }
 
     public func stop() async {
+        serverLogger.info("HeidrunServer stopping")
         try? await transferChannel?.close().get()
         try? await controlChannel?.close().get()
         try? await group?.shutdownGracefully()
         controlChannel = nil
         transferChannel = nil
         group = nil
+        serverLogger.debug("HeidrunServer fully stopped")
     }
 
     private static func bindPair(

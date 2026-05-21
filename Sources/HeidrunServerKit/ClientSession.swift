@@ -108,6 +108,10 @@ public actor ClientSession {
             let leftSocket = socketID
             await registry.unregister(socketID: leftSocket)
             await registry.broadcast(PacketEncoder.userLeftPush(socketID: leftSocket))
+            serverLogger.info("user disconnected", metadata: [
+                "socketID": "\(leftSocket)",
+                "nickname": "\(nickname)"
+            ])
         }
     }
 
@@ -223,6 +227,11 @@ public actor ClientSession {
 
         let assigned = await registry.register(session: self, nickname: nick, icon: iconValue)
         self.socketID = assigned
+        serverLogger.info("user logged in", metadata: [
+            "socketID": "\(assigned)",
+            "nickname": "\(nick)",
+            "login": "\(login.isEmpty ? "guest" : login)"
+        ])
 
         let reply = PacketEncoder.loginReply(
             taskNumber: header.taskNumber,
