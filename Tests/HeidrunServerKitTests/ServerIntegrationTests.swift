@@ -3,17 +3,13 @@ import Testing
 import HeidrunCore
 @testable import HeidrunServerKit
 
-@Suite("Server integration", .serialized)
-struct ServerIntegrationTests {
-
-    // MARK: - Helpers
-
+enum ServerTestHelpers {
     /// Spin up a server on an ephemeral port, run `body`, and guarantee
     /// `await server.stop()` completes before this function returns —
     /// including on a thrown error from `body`. Eliminates the deferred-
     /// Task race where one test's cleanup overlaps the next test's setup
     /// and NIO emits "EventLoop already shut down" warnings.
-    private func withRunningServer<Result>(
+    static func withRunningServer<Result>(
         configuration: ServerConfiguration = ServerConfiguration(
             port: 0,
             serverName: "Heidrun integration test"
@@ -32,7 +28,7 @@ struct ServerIntegrationTests {
         }
     }
 
-    private func connectAndLogin(
+    static func connectAndLogin(
         port: UInt16,
         nickname: String,
         loginName: String = "",
@@ -49,13 +45,17 @@ struct ServerIntegrationTests {
         try await client.login(name: loginName, password: password, nickname: nickname, icon: 0)
         return client
     }
+}
+
+@Suite("Server integration", .serialized)
+struct ServerIntegrationTests {
 
     // MARK: - Tests
 
     @Test("client connects, logs in, sees itself in the user list")
     func loginAndUserList() async throws {
-        try await withRunningServer { _, port in
-            let client = try await connectAndLogin(port: port, nickname: "Frank")
+        try await ServerTestHelpers.withRunningServer { _, port in
+            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
             try await Task.sleep(for: .milliseconds(100))
             let users = try await client.fetchUserList()
             #expect(users.count == 1)
@@ -65,9 +65,9 @@ struct ServerIntegrationTests {
 
     @Test("two clients see each other in the user list and receive a chat broadcast")
     func twoClientChatBroadcast() async throws {
-        try await withRunningServer { _, port in
-            let alice = try await connectAndLogin(port: port, nickname: "Alice")
-            let bob = try await connectAndLogin(port: port, nickname: "Bob")
+        try await ServerTestHelpers.withRunningServer { _, port in
+            let alice = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Alice")
+            let bob = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Bob")
             try await Task.sleep(for: .milliseconds(200))
 
             let users = try await bob.fetchUserList()
@@ -119,14 +119,14 @@ struct ServerIntegrationTests {
 
     @Test("server pushes the configured agreement after login")
     func pushesAgreement() async throws {
-        try await withRunningServer(
+        try await ServerTestHelpers.withRunningServer(
             configuration: ServerConfiguration(
                 port: 0,
                 serverName: "Heidrun integration test",
                 agreement: "Welcome to the test server."
             )
         ) { _, port in
-            let client = try await connectAndLogin(port: port, nickname: "Frank")
+            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
 
             let observer = Task { () -> Bool in
                 for await event in client.events {
@@ -158,9 +158,9 @@ struct ServerIntegrationTests {
 
     @Test("when a client disconnects, remaining clients see userLeft (transID 302)")
     func userLeavesOnDisconnect() async throws {
-        try await withRunningServer { _, port in
-            let alice = try await connectAndLogin(port: port, nickname: "Alice")
-            let bob = try await connectAndLogin(port: port, nickname: "Bob")
+        try await ServerTestHelpers.withRunningServer { _, port in
+            let alice = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Alice")
+            let bob = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Bob")
             try await Task.sleep(for: .milliseconds(200))
 
             let observer = Task { () -> UInt16? in

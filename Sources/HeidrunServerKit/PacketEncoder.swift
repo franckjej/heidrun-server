@@ -114,6 +114,36 @@ enum PacketEncoder {
         )
     }
 
+    /// Push transID 104 (`kInfoMsg`) — server-to-target delivery of a
+    /// private message. Fields: sender's socket + the body.
+    static func privateMessagePush(
+        fromSocket: UInt16,
+        message: String,
+        encoding: String.Encoding
+    ) -> Data {
+        PacketCodec.encode(
+            classID: 0,
+            transactionID: 104,
+            taskNumber: 0,
+            fields: [
+                PacketField.uint16(.socket, fromSocket),
+                PacketField.string(.message, message, encoding: encoding)
+            ]
+        )
+    }
+
+    /// Reply with `errorID == 1` and no payload. Used by handlers that
+    /// need to signal failure without a descriptive error message.
+    static func errorReply(taskNumber: UInt32, transactionID: UInt16) -> Data {
+        PacketCodec.encode(
+            classID: 1,
+            transactionID: transactionID,
+            taskNumber: taskNumber,
+            errorID: 1,
+            fields: []
+        )
+    }
+
     /// Push transID 109 (`agreement`) with the server's banner text.
     /// `autoAgree` is always 0 in MVP — the client's UI confirms
     /// before sending the agree (121) back.

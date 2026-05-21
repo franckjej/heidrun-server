@@ -48,6 +48,14 @@ public actor UserRegistry {
         Array(members.values).sorted { $0.socketID < $1.socketID }
     }
 
+    /// Look up the live `ClientSession` for a given `socketID`, or
+    /// `nil` if no such session is currently connected. Used by
+    /// targeted transactions (private message, kick) that need to
+    /// deliver bytes to a single peer rather than broadcasting.
+    public func lookup(socketID: UInt16) -> ClientSession? {
+        sessions[socketID]?.value
+    }
+
     /// Send `packet` to every live session. `excluding` is the
     /// originator's `socketID`; pass `nil` to deliver to everyone.
     public func broadcast(_ packet: Data, excluding originator: UInt16? = nil) async {

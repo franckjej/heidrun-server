@@ -7,15 +7,15 @@ import HeidrunCore
 /// behind `await` boundaries so the broadcast fan-out from
 /// `UserRegistry` can safely call `send(_:)` from any task.
 public actor ClientSession {
-    private let registry: UserRegistry
-    private let configuration: ServerConfiguration
-    private let stringEncoding: String.Encoding
-    private let writer: @Sendable (Data) async throws -> Void
-    private let closer: @Sendable () async -> Void
+    let registry: UserRegistry
+    let configuration: ServerConfiguration
+    let stringEncoding: String.Encoding
+    let writer: @Sendable (Data) async throws -> Void
+    let closer: @Sendable () async -> Void
 
-    private var socketID: UInt16 = 0
-    private var nickname: String = "guest"
-    private var icon: UInt16 = 0
+    var socketID: UInt16 = 0
+    var nickname: String = "guest"
+    var icon: UInt16 = 0
 
     public init(
         registry: UserRegistry,
@@ -105,6 +105,9 @@ public actor ClientSession {
             return true
         case 105:
             await handleChat(header: header, fields: fields)
+            return true
+        case 108:
+            await handlePrivateMessage(header: header, fields: fields)
             return true
         default:
             return true
