@@ -114,6 +114,65 @@ enum PacketEncoder {
         )
     }
 
+    /// Push transID 104 (`kInfoMsg`) — server-to-target delivery of a
+    /// private message. Fields: sender's socket + the body.
+    static func privateMessagePush(
+        fromSocket: UInt16,
+        message: String,
+        encoding: String.Encoding
+    ) -> Data {
+        PacketCodec.encode(
+            classID: 0,
+            transactionID: 104,
+            taskNumber: 0,
+            fields: [
+                PacketField.uint16(.socket, fromSocket),
+                PacketField.string(.message, message, encoding: encoding)
+            ]
+        )
+    }
+
+    /// Reply to `getNewsList` (101). The entire feed travels in one
+    /// `.message` field — the client splits on `\r` to surface
+    /// individual posts.
+    static func plainNewsReply(
+        taskNumber: UInt32,
+        feed: String,
+        encoding: String.Encoding
+    ) -> Data {
+        PacketCodec.encode(
+            classID: 1,
+            transactionID: 101,
+            taskNumber: taskNumber,
+            fields: [PacketField.string(.message, feed, encoding: encoding)]
+        )
+    }
+
+    /// Push transID 102 (`kInfoNewPost`) for a fresh plain-news post.
+    static func plainNewsPostPush(
+        line: String,
+        encoding: String.Encoding
+    ) -> Data {
+        PacketCodec.encode(
+            classID: 0,
+            transactionID: 102,
+            taskNumber: 0,
+            fields: [PacketField.string(.message, line, encoding: encoding)]
+        )
+    }
+
+    /// Reply with `errorID == 1` and no payload. Used by handlers that
+    /// need to signal failure without a descriptive error message.
+    static func errorReply(taskNumber: UInt32, transactionID: UInt16) -> Data {
+        PacketCodec.encode(
+            classID: 1,
+            transactionID: transactionID,
+            taskNumber: taskNumber,
+            errorID: 1,
+            fields: []
+        )
+    }
+
     /// Push transID 109 (`agreement`) with the server's banner text.
     /// `autoAgree` is always 0 in MVP — the client's UI confirms
     /// before sending the agree (121) back.
@@ -125,6 +184,78 @@ enum PacketEncoder {
             fields: [
                 PacketField.string(.message, text, encoding: encoding),
                 PacketField.uint16(.autoAgree, 0)
+            ]
+        )
+    }
+
+    /// Reply to `getThreadedNewsBundles` (370). Each field is a single
+    /// `newsBundleEntry` (object 323) describing one folder/category
+    /// at the requested path.
+    static func newsBundlesReply(
+        taskNumber: UInt32,
+        nodes: [BundleNode],
+        encoding: String.Encoding
+    ) -> Data {
+        let fields = nodes.map { node -> PacketField in
+            let count = UInt16(clamping: node.kind == .bundle ? node.children.count : node.posts.count)
+            return NewsBundleEntryCodec.encode(
+                name: node.name,
+                kind: node.kind,
+                itemCount: count,
+                encoding: encoding
+            )
+        }
+        return PacketCodec.encode(
+            classID: 1,
+            transactionID: 370,
+            taskNumber: taskNumber,
+            fields: fields
+        )
+    }
+
+    /// Reply to `getThreadedNewsCategoryContents` (371). All threads in
+    /// the category travel in a single `newsThreadList` (object 321) blob.
+    static func newsCategoryReply(
+        taskNumber: UInt32,
+        posts: [NewsPost],
+        encoding: String.Encoding
+    ) -> Data {
+        let now = Date()
+        let entries = posts.enumerated().map { offset, post in
+            NewsThreadListEntry(
+                threadID: UInt16(offset + 1),
+                parentID: 0,
+                postedAt: now,
+                title: post.title,
+                author: post.author,
+                body: post.body,
+                mimeType: "text/plain"
+            )
+        }
+        return PacketCodec.encode(
+            classID: 1,
+            transactionID: 371,
+            taskNumber: taskNumber,
+            fields: [NewsThreadListCodec.encode(entries, encoding: encoding)]
+        )
+    }
+
+    /// Reply to `getNewsThreadBody` (400). Carries the post's title,
+    /// author, MIME type ("text/plain" in this milestone), and body.
+    static func newsThreadBodyReply(
+        taskNumber: UInt32,
+        post: NewsPost,
+        encoding: String.Encoding
+    ) -> Data {
+        PacketCodec.encode(
+            classID: 1,
+            transactionID: 400,
+            taskNumber: taskNumber,
+            fields: [
+                PacketField.string(.newsTitle, post.title, encoding: encoding),
+                PacketField.string(.newsAuthor, post.author, encoding: encoding),
+                PacketField.string(.newsType, "text/plain", encoding: encoding),
+                PacketField.string(.newsData, post.body, encoding: encoding)
             ]
         )
     }

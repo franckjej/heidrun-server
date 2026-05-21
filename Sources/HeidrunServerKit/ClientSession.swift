@@ -7,24 +7,27 @@ import HeidrunCore
 /// behind `await` boundaries so the broadcast fan-out from
 /// `UserRegistry` can safely call `send(_:)` from any task.
 public actor ClientSession {
-    private let registry: UserRegistry
-    private let configuration: ServerConfiguration
-    private let stringEncoding: String.Encoding
-    private let writer: @Sendable (Data) async throws -> Void
-    private let closer: @Sendable () async -> Void
+    let registry: UserRegistry
+    let news: NewsTree
+    let configuration: ServerConfiguration
+    let stringEncoding: String.Encoding
+    let writer: @Sendable (Data) async throws -> Void
+    let closer: @Sendable () async -> Void
 
-    private var socketID: UInt16 = 0
-    private var nickname: String = "guest"
-    private var icon: UInt16 = 0
+    var socketID: UInt16 = 0
+    var nickname: String = "guest"
+    var icon: UInt16 = 0
 
     public init(
         registry: UserRegistry,
+        news: NewsTree,
         configuration: ServerConfiguration,
         stringEncoding: String.Encoding,
         writer: @escaping @Sendable (Data) async throws -> Void,
         closer: @escaping @Sendable () async -> Void
     ) {
         self.registry = registry
+        self.news = news
         self.configuration = configuration
         self.stringEncoding = stringEncoding
         self.writer = writer
@@ -36,6 +39,14 @@ public actor ClientSession {
     /// loops over every session and calls `send` here.
     public func send(_ packet: Data) async {
         try? await writer(packet)
+    }
+
+    /// Drop the underlying TCP connection. The session's `run` loop
+    /// observes the close, runs its normal disconnect-cleanup path
+    /// (unregister + broadcast `userLeft`), and returns. Used by the
+    /// kick handler to disconnect a target by socketID.
+    public func disconnectNow() async {
+        await closer()
     }
 
     /// Drive the connection from raw inbound bytes through handshake,
@@ -105,6 +116,30 @@ public actor ClientSession {
             return true
         case 105:
             await handleChat(header: header, fields: fields)
+            return true
+        case 108:
+            await handlePrivateMessage(header: header, fields: fields)
+            return true
+        case 101:
+            await handleFetchPlainNews(header: header)
+            return true
+        case 103:
+            await handlePostPlainNews(header: header, fields: fields)
+            return true
+        case 370:
+            await handleGetNewsBundles(header: header, fields: fields)
+            return true
+        case 371:
+            await handleGetNewsCategory(header: header, fields: fields)
+            return true
+        case 400:
+            await handleGetNewsThread(header: header, fields: fields)
+            return true
+        case 410:
+            await handlePostNewsThread(header: header, fields: fields)
+            return true
+        case 110:
+            await handleKick(header: header, fields: fields)
             return true
         default:
             return true
