@@ -112,6 +112,12 @@ public actor ClientSession {
         case 108:
             await handlePrivateMessage(header: header, fields: fields)
             return true
+        case 101:
+            await handleFetchPlainNews(header: header)
+            return true
+        case 103:
+            await handlePostPlainNews(header: header, fields: fields)
+            return true
         default:
             return true
         }

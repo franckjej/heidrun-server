@@ -132,6 +132,35 @@ enum PacketEncoder {
         )
     }
 
+    /// Reply to `getNewsList` (101). The entire feed travels in one
+    /// `.message` field — the client splits on `\r` to surface
+    /// individual posts.
+    static func plainNewsReply(
+        taskNumber: UInt32,
+        feed: String,
+        encoding: String.Encoding
+    ) -> Data {
+        PacketCodec.encode(
+            classID: 1,
+            transactionID: 101,
+            taskNumber: taskNumber,
+            fields: [PacketField.string(.message, feed, encoding: encoding)]
+        )
+    }
+
+    /// Push transID 102 (`kInfoNewPost`) for a fresh plain-news post.
+    static func plainNewsPostPush(
+        line: String,
+        encoding: String.Encoding
+    ) -> Data {
+        PacketCodec.encode(
+            classID: 0,
+            transactionID: 102,
+            taskNumber: 0,
+            fields: [PacketField.string(.message, line, encoding: encoding)]
+        )
+    }
+
     /// Reply with `errorID == 1` and no payload. Used by handlers that
     /// need to signal failure without a descriptive error message.
     static func errorReply(taskNumber: UInt32, transactionID: UInt16) -> Data {
