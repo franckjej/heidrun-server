@@ -48,6 +48,10 @@ public actor FileVault {
 
     private let rootURL: URL
     private let fileManager: FileManager
+    /// In-memory comment store. Keyed by the file's relative path from
+    /// the root. Wipes on restart — same trade-off NewsTree makes;
+    /// persistent metadata storage is deferred to M4.
+    private var comments: [String: String] = [:]
 
     public init(
         rootPath: String? = nil,
@@ -115,7 +119,165 @@ public actor FileVault {
         let attributes = (try? fileManager.attributesOfItem(atPath: fileURL.path)) ?? [:]
         let created = (attributes[.creationDate] as? Date) ?? .distantPast
         let modified = (attributes[.modificationDate] as? Date) ?? .distantPast
-        return Info(entry: entry, created: created, modified: modified, comment: "")
+        let comment = comments[relativeKey(path: path, name: name)] ?? ""
+        return Info(entry: entry, created: created, modified: modified, comment: comment)
+    }
+
+    // MARK: - Writes
+
+    /// Delete a file or folder at `(path, name)`. Returns `true` on
+    /// success, `false` when the entry is missing or `name` is unsafe.
+    @discardableResult
+    public func delete(at path: [String], name: String) -> Bool {
+        guard Self.isSafeComponent(name) else { return false }
+        guard let parent = resolved(path: path) else { return false }
+        let url = parent.appendingPathComponent(name, isDirectory: false)
+        guard fileManager.fileExists(atPath: url.path) else { return false }
+        do {
+            try fileManager.removeItem(at: url)
+            comments.removeValue(forKey: relativeKey(path: path, name: name))
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Create a folder at `(path, name)`. Returns `false` when the
+    /// folder already exists or the name is unsafe.
+    @discardableResult
+    public func createFolder(at path: [String], name: String) -> Bool {
+        guard Self.isSafeComponent(name) else { return false }
+        guard let parent = resolved(path: path) else { return false }
+        let url = parent.appendingPathComponent(name, isDirectory: true)
+        guard !fileManager.fileExists(atPath: url.path) else { return false }
+        do {
+            try fileManager.createDirectory(at: url, withIntermediateDirectories: false)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Rename a file or folder at `(path, oldName)` to `newName`.
+    @discardableResult
+    public func rename(at path: [String], from oldName: String, to newName: String) -> Bool {
+        guard Self.isSafeComponent(oldName), Self.isSafeComponent(newName) else { return false }
+        guard let parent = resolved(path: path) else { return false }
+        let source = parent.appendingPathComponent(oldName, isDirectory: false)
+        let target = parent.appendingPathComponent(newName, isDirectory: false)
+        guard fileManager.fileExists(atPath: source.path),
+              !fileManager.fileExists(atPath: target.path) else { return false }
+        do {
+            try fileManager.moveItem(at: source, to: target)
+            let oldKey = relativeKey(path: path, name: oldName)
+            let newKey = relativeKey(path: path, name: newName)
+            if let comment = comments.removeValue(forKey: oldKey) {
+                comments[newKey] = comment
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Move a file or folder from `(sourcePath, name)` to a different
+    /// parent at `destinationPath`. The name is preserved.
+    @discardableResult
+    public func move(
+        from sourcePath: [String],
+        name: String,
+        to destinationPath: [String]
+    ) -> Bool {
+        guard Self.isSafeComponent(name) else { return false }
+        guard let sourceParent = resolved(path: sourcePath),
+              let destinationParent = resolved(path: destinationPath) else { return false }
+        let source = sourceParent.appendingPathComponent(name, isDirectory: false)
+        let target = destinationParent.appendingPathComponent(name, isDirectory: false)
+        guard fileManager.fileExists(atPath: source.path),
+              isDirectory(destinationParent),
+              !fileManager.fileExists(atPath: target.path) else { return false }
+        do {
+            try fileManager.moveItem(at: source, to: target)
+            let oldKey = relativeKey(path: sourcePath, name: name)
+            let newKey = relativeKey(path: destinationPath, name: name)
+            if let comment = comments.removeValue(forKey: oldKey) {
+                comments[newKey] = comment
+            }
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// Create a Unix symlink as a stand-in for a Hotline alias.
+    @discardableResult
+    public func makeAlias(
+        from sourcePath: [String],
+        name: String,
+        to destinationPath: [String]
+    ) -> Bool {
+        guard Self.isSafeComponent(name) else { return false }
+        guard let sourceParent = resolved(path: sourcePath),
+              let destinationParent = resolved(path: destinationPath) else { return false }
+        let source = sourceParent.appendingPathComponent(name, isDirectory: false)
+        let target = destinationParent.appendingPathComponent(name, isDirectory: false)
+        guard fileManager.fileExists(atPath: source.path),
+              isDirectory(destinationParent),
+              !fileManager.fileExists(atPath: target.path) else { return false }
+        do {
+            try fileManager.createSymbolicLink(at: target, withDestinationURL: source)
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    @discardableResult
+    public func setComment(at path: [String], name: String, comment: String) -> Bool {
+        guard Self.isSafeComponent(name) else { return false }
+        guard let parent = resolved(path: path) else { return false }
+        let url = parent.appendingPathComponent(name, isDirectory: false)
+        guard fileManager.fileExists(atPath: url.path) else { return false }
+        let key = relativeKey(path: path, name: name)
+        if comment.isEmpty {
+            comments.removeValue(forKey: key)
+        } else {
+            comments[key] = comment
+        }
+        return true
+    }
+
+    /// Commit an uploaded file's data fork to disk. Used by the HTXF
+    /// upload side-channel. Returns `false` when the destination
+    /// already exists (and `resume == false`) or the path is unsafe.
+    @discardableResult
+    public func putFile(
+        at path: [String],
+        name: String,
+        data: Data,
+        resume: Bool = false
+    ) -> Bool {
+        guard Self.isSafeComponent(name) else { return false }
+        guard let parent = resolved(path: path), isDirectory(parent) else { return false }
+        let url = parent.appendingPathComponent(name, isDirectory: false)
+        if resume, fileManager.fileExists(atPath: url.path) {
+            do {
+                let handle = try FileHandle(forWritingTo: url)
+                try handle.seekToEnd()
+                try handle.write(contentsOf: data)
+                try handle.close()
+                return true
+            } catch {
+                return false
+            }
+        }
+        guard !fileManager.fileExists(atPath: url.path) else { return false }
+        do {
+            try data.write(to: url)
+            return true
+        } catch {
+            return false
+        }
     }
 
     // MARK: - Helpers
@@ -166,6 +328,10 @@ public actor FileVault {
                 itemCount: 0
             )
         }
+    }
+
+    private func relativeKey(path: [String], name: String) -> String {
+        (path + [name]).joined(separator: "/")
     }
 
     /// `..`, `.`, anything containing `/` or `\` is rejected; empty

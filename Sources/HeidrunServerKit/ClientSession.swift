@@ -171,8 +171,26 @@ public actor ClientSession {
         case 202:
             await handleDownloadFile(header: header, fields: fields)
             return true
+        case 203:
+            await handleUploadFile(header: header, fields: fields)
+            return true
+        case 204:
+            await handleDeleteEntry(header: header, fields: fields)
+            return true
+        case 205:
+            await handleCreateFolder(header: header, fields: fields)
+            return true
         case 206:
             await handleFileInfo(header: header, fields: fields)
+            return true
+        case 207:
+            await handleSetFileInfo(header: header, fields: fields)
+            return true
+        case 208:
+            await handleMoveEntry(header: header, fields: fields)
+            return true
+        case 209:
+            await handleMakeAlias(header: header, fields: fields)
             return true
         default:
             return true

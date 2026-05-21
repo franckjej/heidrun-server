@@ -314,6 +314,20 @@ enum PacketEncoder {
         )
     }
 
+    /// Reply to `uploadFile` (203). Carries just the server-allocated
+    /// transferID — the client follows up with an HTXF connection.
+    static func uploadFileReply(
+        taskNumber: UInt32,
+        transferID: UInt32
+    ) -> Data {
+        PacketCodec.encode(
+            classID: 1,
+            transactionID: 203,
+            taskNumber: taskNumber,
+            fields: [PacketField.uint32(.transferID, transferID)]
+        )
+    }
+
     /// Reply to `downloadFile` (202). Carries the server-allocated
     /// transferID + the byte count the HTXF channel will stream.
     static func downloadFileReply(
