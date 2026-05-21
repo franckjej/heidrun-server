@@ -118,6 +118,15 @@ public actor ClientSession {
         case 103:
             await handlePostPlainNews(header: header, fields: fields)
             return true
+        case 370:
+            await handleGetNewsBundles(header: header, fields: fields)
+            return true
+        case 371:
+            await handleGetNewsCategory(header: header, fields: fields)
+            return true
+        case 400:
+            await handleGetNewsThread(header: header, fields: fields)
+            return true
         default:
             return true
         }
