@@ -11,6 +11,7 @@ public actor ClientSession {
     let news: NewsTree
     let accounts: AccountStore
     let files: FileVault
+    let transfers: TransferRegistry
     let configuration: ServerConfiguration
     let stringEncoding: String.Encoding
     let writer: @Sendable (Data) async throws -> Void
@@ -28,6 +29,7 @@ public actor ClientSession {
         news: NewsTree,
         accounts: AccountStore,
         files: FileVault,
+        transfers: TransferRegistry,
         configuration: ServerConfiguration,
         stringEncoding: String.Encoding,
         writer: @escaping @Sendable (Data) async throws -> Void,
@@ -37,6 +39,7 @@ public actor ClientSession {
         self.news = news
         self.accounts = accounts
         self.files = files
+        self.transfers = transfers
         self.configuration = configuration
         self.stringEncoding = stringEncoding
         self.writer = writer
@@ -164,6 +167,9 @@ public actor ClientSession {
             return true
         case 200:
             await handleListFiles(header: header, fields: fields)
+            return true
+        case 202:
+            await handleDownloadFile(header: header, fields: fields)
             return true
         case 206:
             await handleFileInfo(header: header, fields: fields)

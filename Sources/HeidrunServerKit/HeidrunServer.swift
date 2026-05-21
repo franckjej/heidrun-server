@@ -3,19 +3,19 @@ import NIOCore
 import NIOPosix
 import HeidrunCore
 
-/// Top-level server. `start()` binds a TCP listener on the configured
-/// port and returns the actually-bound port (useful when callers pass
-/// `port: 0` and want the OS-assigned one — integration tests do
-/// exactly this). `stop()` closes the listener and shuts the event
-/// loop group down gracefully.
+/// Top-level server. `start()` binds the control TCP listener on the
+/// configured port **and** the HTXF transfer listener on `port + 1`,
+/// then returns the control port. `stop()` tears both down.
 public actor HeidrunServer {
     private let configuration: ServerConfiguration
     private let stringEncoding: String.Encoding
     private let registry: UserRegistry
     private let news: NewsTree
+    private let transfers: TransferRegistry
     private var accounts: AccountStore?
     private var group: (any EventLoopGroup)?
-    private var listenerChannel: (any Channel)?
+    private var controlChannel: (any Channel)?
+    private var transferChannel: (any Channel)?
 
     public init(
         configuration: ServerConfiguration,
@@ -25,14 +25,16 @@ public actor HeidrunServer {
         self.stringEncoding = stringEncoding
         self.registry = UserRegistry()
         self.news = NewsTree(seed: configuration.newsSeed ?? NewsTree.Seed())
+        self.transfers = TransferRegistry()
     }
 
-    /// Bind the listener and return the bound port. The
-    /// `childChannelInitializer` installs the inbound-byte handler and
-    /// spawns the per-session async task **synchronously** on the
+    /// Bind the control listener AND the transfer listener (port + 1).
+    /// The `childChannelInitializer` installs the inbound-byte handler
+    /// and spawns the per-session async task synchronously on the
     /// child's event loop, before any reads happen — otherwise the
     /// client's 12-byte handshake races our handler installation and
-    /// the session reads zero bytes forever.
+    /// the session reads zero bytes forever. (See
+    /// `feedback_nio_child_channel_init` for the war story.)
     public func start() async throws -> UInt16 {
         let accountStore = try AccountStore(
             path: configuration.accountStorePath,
@@ -58,12 +60,13 @@ public actor HeidrunServer {
 
         let registryCopy = self.registry
         let newsCopy = self.news
+        let transfersCopy = self.transfers
         let accountsCopy = accountStore
         let filesCopy = fileVault
         let configurationCopy = self.configuration
         let stringEncodingCopy = self.stringEncoding
 
-        let bootstrap = ServerBootstrap(group: eventLoopGroup)
+        let controlBootstrap = ServerBootstrap(group: eventLoopGroup)
             .serverChannelOption(ChannelOptions.backlog, value: 64)
             .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
@@ -80,6 +83,7 @@ public actor HeidrunServer {
                             news: newsCopy,
                             accounts: accountsCopy,
                             files: filesCopy,
+                            transfers: transfersCopy,
                             configuration: configurationCopy,
                             stringEncoding: stringEncodingCopy
                         )
@@ -87,16 +91,91 @@ public actor HeidrunServer {
                 }
             }
 
-        let channel = try await bootstrap.bind(host: "127.0.0.1", port: Int(configuration.port)).get()
-        self.listenerChannel = channel
-        return UInt16(channel.localAddress?.port ?? 0)
+        let transferBootstrap = ServerBootstrap(group: eventLoopGroup)
+            .serverChannelOption(ChannelOptions.backlog, value: 64)
+            .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+            .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+            .childChannelInitializer { childChannel in
+                let (inboundStream, continuation) = AsyncStream<Data>.makeStream()
+                let readerHandler = SessionIOHandler(continuation: continuation)
+                return childChannel.pipeline.addHandler(readerHandler).map {
+                    let channelBox = UncheckedSendableBox(childChannel)
+                    Task {
+                        await Self.runTransferChannel(
+                            channelBox: channelBox,
+                            inbound: inboundStream,
+                            transfers: transfersCopy
+                        )
+                    }
+                }
+            }
+
+        // Bind both listeners. When the user asks for port 0 (OS-pick
+        // for tests), try a handful of consecutive pairs to find one
+        // where (control, control+1) are both free.
+        let (control, transfer) = try await Self.bindPair(
+            controlBootstrap: controlBootstrap,
+            transferBootstrap: transferBootstrap,
+            requestedControlPort: configuration.port
+        )
+        self.controlChannel = control
+        self.transferChannel = transfer
+        return UInt16(control.localAddress?.port ?? 0)
     }
 
     public func stop() async {
-        try? await listenerChannel?.close().get()
+        try? await transferChannel?.close().get()
+        try? await controlChannel?.close().get()
         try? await group?.shutdownGracefully()
-        listenerChannel = nil
+        controlChannel = nil
+        transferChannel = nil
         group = nil
+    }
+
+    private static func bindPair(
+        controlBootstrap: ServerBootstrap,
+        transferBootstrap: ServerBootstrap,
+        requestedControlPort: UInt16
+    ) async throws -> (any Channel, any Channel) {
+        if requestedControlPort != 0 {
+            // Fixed-port mode — let the second bind throw if the
+            // adjacent port is occupied. Real deployments assume
+            // operators have arranged for both ports to be free.
+            let control = try await controlBootstrap.bind(host: "127.0.0.1", port: Int(requestedControlPort)).get()
+            do {
+                let transfer = try await transferBootstrap.bind(host: "127.0.0.1", port: Int(requestedControlPort + 1)).get()
+                return (control, transfer)
+            } catch {
+                try? await control.close().get()
+                throw error
+            }
+        }
+        // OS-pick mode — try a few times until we land a pair where
+        // both ports are free. Integration tests run lots of these
+        // back-to-back, so a single retry isn't enough.
+        var lastError: Error?
+        for _ in 0..<16 {
+            do {
+                let control = try await controlBootstrap.bind(host: "127.0.0.1", port: 0).get()
+                let controlPort = UInt16(control.localAddress?.port ?? 0)
+                do {
+                    let transfer = try await transferBootstrap.bind(host: "127.0.0.1", port: Int(controlPort + 1)).get()
+                    return (control, transfer)
+                } catch {
+                    try? await control.close().get()
+                    lastError = error
+                    continue
+                }
+            } catch {
+                lastError = error
+                continue
+            }
+        }
+        throw lastError ?? NSError(
+            domain: "HeidrunServer",
+            code: 1,
+            userInfo: [NSLocalizedDescriptionKey: "could not find a free (control, control+1) port pair"]
+        )
     }
 
     private static func runChildSession(
@@ -106,6 +185,7 @@ public actor HeidrunServer {
         news: NewsTree,
         accounts: AccountStore,
         files: FileVault,
+        transfers: TransferRegistry,
         configuration: ServerConfiguration,
         stringEncoding: String.Encoding
     ) async {
@@ -114,6 +194,7 @@ public actor HeidrunServer {
             news: news,
             accounts: accounts,
             files: files,
+            transfers: transfers,
             configuration: configuration,
             stringEncoding: stringEncoding,
             writer: { packet in
@@ -128,6 +209,48 @@ public actor HeidrunServer {
         )
         await session.run(inbound)
         try? await channelBox.value.close().get()
+    }
+
+    /// One HTXF connection. Reads the 16-byte preamble, looks up the
+    /// transferID, streams the bytes back, closes. Errors and unknown
+    /// IDs both close the channel immediately.
+    private static func runTransferChannel(
+        channelBox: UncheckedSendableBox<any Channel>,
+        inbound: AsyncStream<Data>,
+        transfers: TransferRegistry
+    ) async {
+        var stream = ByteStream(source: inbound)
+        defer { Task { try? await channelBox.value.close().get() } }
+
+        let preamble: Data
+        do {
+            preamble = try await stream.receiveExactly(16)
+        } catch {
+            return
+        }
+        // Magic: "HTXF" (0x48 0x54 0x58 0x46)
+        guard preamble.prefix(4) == Data([0x48, 0x54, 0x58, 0x46]) else { return }
+        let base = preamble.startIndex
+        let transferID = UInt32(preamble[base + 4]) << 24
+            | UInt32(preamble[base + 5]) << 16
+            | UInt32(preamble[base + 6]) << 8
+            | UInt32(preamble[base + 7])
+        guard let pending = await transfers.claim(transferID: transferID) else { return }
+        switch pending {
+        case let .download(bytes, offset):
+            let outChannel = channelBox.value
+            let start = min(Int(offset), bytes.count)
+            let tail = bytes.suffix(from: bytes.startIndex.advanced(by: start))
+            let chunkSize = 16 * 1024
+            var current = tail.startIndex
+            while current < tail.endIndex {
+                let end = tail.index(current, offsetBy: chunkSize, limitedBy: tail.endIndex) ?? tail.endIndex
+                var buffer = outChannel.allocator.buffer(capacity: chunkSize)
+                buffer.writeBytes(tail[current..<end])
+                try? await outChannel.writeAndFlush(buffer).get()
+                current = end
+            }
+        }
     }
 }
 

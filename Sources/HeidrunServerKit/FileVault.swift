@@ -91,6 +91,19 @@ public actor FileVault {
         }
     }
 
+    /// Read the data-fork bytes for a file at `(path, name)`. Returns
+    /// `nil` when the entry is missing, a directory, or `name` is
+    /// forbidden. Used by the HTXF download side-channel.
+    public func bytes(at path: [String], name: String) -> Data? {
+        guard Self.isSafeComponent(name) else { return nil }
+        guard let parent = resolved(path: path) else { return nil }
+        let fileURL = parent.appendingPathComponent(name, isDirectory: false)
+        var isDir: ObjCBool = false
+        guard fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDir) else { return nil }
+        guard !isDir.boolValue else { return nil }
+        return try? Data(contentsOf: fileURL)
+    }
+
     /// Snapshot metadata for a single entry at `(path, name)`. Returns
     /// `nil` when the entry is missing or `name` is forbidden.
     public func info(at path: [String], name: String) -> Info? {
