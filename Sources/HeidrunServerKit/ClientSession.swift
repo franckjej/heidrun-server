@@ -8,6 +8,7 @@ import HeidrunCore
 /// `UserRegistry` can safely call `send(_:)` from any task.
 public actor ClientSession {
     let registry: UserRegistry
+    let news: NewsTree
     let configuration: ServerConfiguration
     let stringEncoding: String.Encoding
     let writer: @Sendable (Data) async throws -> Void
@@ -19,12 +20,14 @@ public actor ClientSession {
 
     public init(
         registry: UserRegistry,
+        news: NewsTree,
         configuration: ServerConfiguration,
         stringEncoding: String.Encoding,
         writer: @escaping @Sendable (Data) async throws -> Void,
         closer: @escaping @Sendable () async -> Void
     ) {
         self.registry = registry
+        self.news = news
         self.configuration = configuration
         self.stringEncoding = stringEncoding
         self.writer = writer

@@ -10,16 +10,19 @@ public struct ServerConfiguration: Sendable {
     public var serverName: String
     public var agreement: String?
     public var advertisedVersion: UInt16
+    public var newsSeed: NewsTree.Seed?
 
     public init(
         port: UInt16 = 5500,
         serverName: String = "Heidrun",
         agreement: String? = nil,
-        advertisedVersion: UInt16 = 185
+        advertisedVersion: UInt16 = 185,
+        newsSeed: NewsTree.Seed? = nil
     ) {
         self.port = port
         self.serverName = serverName
         self.agreement = agreement
         self.advertisedVersion = advertisedVersion
+        self.newsSeed = newsSeed
     }
 }

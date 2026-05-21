@@ -12,6 +12,7 @@ public actor HeidrunServer {
     private let configuration: ServerConfiguration
     private let stringEncoding: String.Encoding
     private let registry: UserRegistry
+    private let news: NewsTree
     private var group: (any EventLoopGroup)?
     private var listenerChannel: (any Channel)?
 
@@ -22,6 +23,7 @@ public actor HeidrunServer {
         self.configuration = configuration
         self.stringEncoding = stringEncoding
         self.registry = UserRegistry()
+        self.news = NewsTree(seed: configuration.newsSeed ?? NewsTree.Seed())
     }
 
     /// Bind the listener and return the bound port. The
@@ -35,6 +37,7 @@ public actor HeidrunServer {
         self.group = eventLoopGroup
 
         let registryCopy = self.registry
+        let newsCopy = self.news
         let configurationCopy = self.configuration
         let stringEncodingCopy = self.stringEncoding
 
@@ -52,6 +55,7 @@ public actor HeidrunServer {
                             channelBox: channelBox,
                             inbound: inboundStream,
                             registry: registryCopy,
+                            news: newsCopy,
                             configuration: configurationCopy,
                             stringEncoding: stringEncodingCopy
                         )
@@ -75,11 +79,13 @@ public actor HeidrunServer {
         channelBox: UncheckedSendableBox<any Channel>,
         inbound: AsyncStream<Data>,
         registry: UserRegistry,
+        news: NewsTree,
         configuration: ServerConfiguration,
         stringEncoding: String.Encoding
     ) async {
         let session = ClientSession(
             registry: registry,
+            news: news,
             configuration: configuration,
             stringEncoding: stringEncoding,
             writer: { packet in
