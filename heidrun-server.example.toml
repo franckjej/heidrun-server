@@ -1,0 +1,39 @@
+# Sample HeidrunServer configuration.
+#
+# Point HEIDRUN_CONFIG at a copy of this file to load it on startup.
+# Env vars (HEIDRUN_PORT, HEIDRUN_DB_PATH, HEIDRUN_FILES_ROOT,
+# HEIDRUN_ADMIN_LOGIN, HEIDRUN_ADMIN_PASSWORD, HEIDRUN_ADMIN_NICKNAME,
+# HEIDRUN_SERVER_NAME, HEIDRUN_AGREEMENT, HEIDRUN_LOG_LEVEL) override
+# whatever is set here.
+#
+# Every key is optional; missing keys fall back to built-in defaults.
+
+# TCP port for the control channel. The HTXF transfer channel always
+# binds at `port + 1`.
+port = 5500
+
+# Display name shown in the user list.
+server_name = "Heidrun"
+
+# swift-log threshold: trace, debug, info, notice, warning, error, critical.
+log_level = "info"
+
+# Optional banner text the server pushes after login (transID 109).
+# Omit the line to skip the agreement push entirely.
+# agreement = "Welcome to the server. Be kind."
+
+# SQLite database for accounts. Omit for an in-memory DB (state lost
+# on restart — useful only for tests).
+db_path = "/var/lib/heidrun/heidrun.sqlite"
+
+# Filesystem root the file ops operate against. Omit for an
+# ephemeral tempdir (test-only).
+files_root = "/var/lib/heidrun/files"
+
+# Seeded only when the accounts table is empty (i.e. first startup
+# against a fresh DB). Operators should change these credentials via
+# modifyLogin (transID 353) or a follow-up SQL update.
+[bootstrap_admin]
+login = "admin"
+password = "admin"
+nickname = "Admin"

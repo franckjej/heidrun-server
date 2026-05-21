@@ -1,5 +1,5 @@
 {
-  "originHash" : "615923cf24c3fdeff745c62d16f7234e145aa9291fb1248d8ef4808574044d6b",
+  "originHash" : "b2c6480dc63920b5114dc85194ae0f67453cbe86d21ad60390fb8bc80c903bbf",
   "pins" : [
     {
       "identity" : "grdb.swift",
@@ -47,6 +47,15 @@
       }
     },
     {
+      "identity" : "swift-log",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-log.git",
+      "state" : {
+        "revision" : "a012e0ad8a8a72de92b0e008c81a9b793f70e73a",
+        "version" : "1.12.1"
+      }
+    },
+    {
       "identity" : "swift-nio",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio.git",
@@ -62,6 +71,15 @@
       "state" : {
         "revision" : "7c6ad0fc39d0763e0b699210e4124afd5041c5df",
         "version" : "1.6.4"
+      }
+    },
+    {
+      "identity" : "tomlkit",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/LebJe/TOMLKit.git",
+      "state" : {
+        "revision" : "ec6198d37d495efc6acd4dffbd262cdca7ff9b3f",
+        "version" : "0.6.0"
       }
     }
   ],

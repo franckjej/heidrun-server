@@ -1,0 +1,48 @@
+[Unit]
+Description=Heidrun Hotline Server
+Documentation=https://github.com/franckjej/heidrun-swift/tree/main/Packages/HeidrunServer
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=heidrun
+Group=heidrun
+ExecStart=/usr/local/bin/heidrun-server
+Environment=HEIDRUN_CONFIG=/etc/heidrun-server/config.toml
+Environment=HEIDRUN_LOG_LEVEL=info
+WorkingDirectory=/var/lib/heidrun
+
+# Graceful shutdown — the server traps SIGTERM and drains its NIO
+# event loop cleanly inside 10 s on a quiet server. Larger timeout
+# gives in-flight transfers a chance to finish.
+KillSignal=SIGTERM
+TimeoutStopSec=30
+Restart=on-failure
+RestartSec=3
+
+# Hardening. Heidrun only needs to read /etc/heidrun-server and
+# read+write under /var/lib/heidrun.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/heidrun
+ReadOnlyPaths=/etc/heidrun-server
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+# Resource caps. Adjust for your workload.
+LimitNOFILE=4096
+
+# Logging — swift-log writes to stderr; systemd-journald picks it up.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
