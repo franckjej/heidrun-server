@@ -286,4 +286,58 @@ enum PacketEncoder {
             ]
         )
     }
+
+    /// Reply to `getFileList` (200). Each field is a `fileListEntry`
+    /// object describing one entry at the requested path.
+    static func fileListReply(
+        taskNumber: UInt32,
+        entries: [FileVault.Entry],
+        encoding: String.Encoding
+    ) -> Data {
+        let fields = entries.map { entry in
+            FileListEntryCodec.encode(
+                RemoteFile(
+                    name: entry.name,
+                    type: entry.type,
+                    creator: entry.creator,
+                    size: entry.size,
+                    itemCount: entry.itemCount
+                ),
+                encoding: encoding
+            )
+        }
+        return PacketCodec.encode(
+            classID: 1,
+            transactionID: 200,
+            taskNumber: taskNumber,
+            fields: fields
+        )
+    }
+
+    /// Reply to `getFileInfo` (206). Carries the file's name, type,
+    /// creator, size, creation/modification timestamps, and optional
+    /// comment.
+    static func fileInfoReply(
+        taskNumber: UInt32,
+        info: FileVault.Info,
+        encoding: String.Encoding
+    ) -> Data {
+        var out: [PacketField] = [
+            PacketField.string(.fileName, info.entry.name, encoding: encoding),
+            PacketField(key: .longFileType, data: LongFourCC.encode(info.entry.type)),
+            PacketField(key: .longFileCreator, data: LongFourCC.encode(info.entry.creator)),
+            PacketField.uint32(.fileSize, info.entry.size),
+            HotlineDateField.encode(info.created, key: .fileCreationDate),
+            HotlineDateField.encode(info.modified, key: .fileModificationDate)
+        ]
+        if !info.comment.isEmpty {
+            out.append(PacketField.string(.fileComment, info.comment, encoding: encoding))
+        }
+        return PacketCodec.encode(
+            classID: 1,
+            transactionID: 206,
+            taskNumber: taskNumber,
+            fields: out
+        )
+    }
 }

@@ -28,7 +28,8 @@ struct HeidrunServerExecutable {
             port: port,
             serverName: environment["HEIDRUN_SERVER_NAME"] ?? "Heidrun",
             accountStorePath: environment["HEIDRUN_DB_PATH"],
-            bootstrapAdmin: bootstrap
+            bootstrapAdmin: bootstrap,
+            filesRootPath: environment["HEIDRUN_FILES_ROOT"]
         ))
 
         do {

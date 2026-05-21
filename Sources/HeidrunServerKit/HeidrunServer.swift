@@ -38,6 +38,7 @@ public actor HeidrunServer {
             path: configuration.accountStorePath,
             passwordRounds: configuration.passwordRounds
         )
+        let fileVault = try FileVault(rootPath: configuration.filesRootPath)
         if let bootstrap = configuration.bootstrapAdmin {
             _ = try await accountStore.bootstrapIfEmpty(
                 login: bootstrap.login,
@@ -58,6 +59,7 @@ public actor HeidrunServer {
         let registryCopy = self.registry
         let newsCopy = self.news
         let accountsCopy = accountStore
+        let filesCopy = fileVault
         let configurationCopy = self.configuration
         let stringEncodingCopy = self.stringEncoding
 
@@ -77,6 +79,7 @@ public actor HeidrunServer {
                             registry: registryCopy,
                             news: newsCopy,
                             accounts: accountsCopy,
+                            files: filesCopy,
                             configuration: configurationCopy,
                             stringEncoding: stringEncodingCopy
                         )
@@ -102,6 +105,7 @@ public actor HeidrunServer {
         registry: UserRegistry,
         news: NewsTree,
         accounts: AccountStore,
+        files: FileVault,
         configuration: ServerConfiguration,
         stringEncoding: String.Encoding
     ) async {
@@ -109,6 +113,7 @@ public actor HeidrunServer {
             registry: registry,
             news: news,
             accounts: accounts,
+            files: files,
             configuration: configuration,
             stringEncoding: stringEncoding,
             writer: { packet in
