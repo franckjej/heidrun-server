@@ -20,30 +20,28 @@ struct HeidrunServerExecutable {
             return handler
         }
 
-        let port: UInt16 = {
-            if let raw = environment["HEIDRUN_PORT"], let parsed = UInt16(raw) {
-                return parsed
+        // Resolve config: HEIDRUN_CONFIG points at a TOML file, env
+        // vars layer on top. Without HEIDRUN_CONFIG the file shape
+        // collapses to "everything defaulted" and env vars are the
+        // sole source — same behaviour as before M4.
+        let configFile: ServerConfigurationFile
+        if let configPath = environment["HEIDRUN_CONFIG"] {
+            do {
+                configFile = try ServerConfigurationFile.load(from: configPath)
+                serverLogger.info("loaded config", metadata: ["path": "\(configPath)"])
+            } catch {
+                serverLogger.critical("failed to load HEIDRUN_CONFIG", metadata: [
+                    "path": "\(configPath)",
+                    "error": "\(error)"
+                ])
+                exit(1)
             }
-            return 5500
-        }()
+        } else {
+            configFile = ServerConfigurationFile()
+        }
+        let configuration = configFile.resolved(environment: environment)
 
-        // Bootstrap admin on first DB init. The default credentials are
-        // intentionally `admin` / `admin` so a fresh install can be
-        // logged into immediately; operators are expected to change them
-        // via modifyLogin (353) or whatever ops process they prefer.
-        let bootstrap = ServerConfiguration.BootstrapAdmin(
-            login: environment["HEIDRUN_ADMIN_LOGIN"] ?? "admin",
-            password: environment["HEIDRUN_ADMIN_PASSWORD"] ?? "admin",
-            nickname: environment["HEIDRUN_ADMIN_NICKNAME"] ?? "Admin"
-        )
-
-        let server = HeidrunServer(configuration: ServerConfiguration(
-            port: port,
-            serverName: environment["HEIDRUN_SERVER_NAME"] ?? "Heidrun",
-            accountStorePath: environment["HEIDRUN_DB_PATH"],
-            bootstrapAdmin: bootstrap,
-            filesRootPath: environment["HEIDRUN_FILES_ROOT"]
-        ))
+        let server = HeidrunServer(configuration: configuration)
 
         do {
             let bound = try await server.start()
