@@ -4,17 +4,31 @@ import HeidrunServerKit
 @main
 struct HeidrunServerExecutable {
     static func main() async {
+        let environment = ProcessInfo.processInfo.environment
+
         let port: UInt16 = {
-            if let raw = ProcessInfo.processInfo.environment["HEIDRUN_PORT"],
-               let parsed = UInt16(raw) {
+            if let raw = environment["HEIDRUN_PORT"], let parsed = UInt16(raw) {
                 return parsed
             }
             return 5500
         }()
 
+        // Bootstrap admin on first DB init. The default credentials are
+        // intentionally `admin` / `admin` so a fresh install can be
+        // logged into immediately; operators are expected to change them
+        // (via modifyLogin (353), `heidrun-server-admin` CLI in v1.5,
+        // or whatever ops process they prefer).
+        let bootstrap = ServerConfiguration.BootstrapAdmin(
+            login: environment["HEIDRUN_ADMIN_LOGIN"] ?? "admin",
+            password: environment["HEIDRUN_ADMIN_PASSWORD"] ?? "admin",
+            nickname: environment["HEIDRUN_ADMIN_NICKNAME"] ?? "Admin"
+        )
+
         let server = HeidrunServer(configuration: ServerConfiguration(
             port: port,
-            serverName: ProcessInfo.processInfo.environment["HEIDRUN_SERVER_NAME"] ?? "Heidrun"
+            serverName: environment["HEIDRUN_SERVER_NAME"] ?? "Heidrun",
+            accountStorePath: environment["HEIDRUN_DB_PATH"],
+            bootstrapAdmin: bootstrap
         ))
 
         do {

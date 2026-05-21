@@ -37,13 +37,15 @@ public struct Account: Sendable, Hashable {
 }
 
 /// Classic Hotline privilege bits — mirrors the wire `accessPrivs`
-/// field. Only the bits HeidrunServer enforces today are defined; the
-/// rest stay as raw bit positions for forward compatibility.
+/// field exactly. Bit positions are taken from `HeidrunCore`'s
+/// `UserPrivileges` so the `permissions` stored here can be sent
+/// straight back on the wire as an 8-byte privilege blob.
 public enum AccountPrivilege: UInt64, Sendable {
-    case disconnectUsers       = 0x00000004     // kick / 110
-    case createAccounts        = 0x00010000     // createLogin / 350
-    case deleteAccounts        = 0x00020000     // deleteLogin / 351
-    case modifyAccounts        = 0x00040000     // modifyLogin / 353
+    case createAccounts        = 0x00004000     // 1 << 14 (createUser)
+    case deleteAccounts        = 0x00008000     // 1 << 15 (deleteUser)
+    case readAccounts          = 0x00010000     // 1 << 16 (readUser)  → openLogin (352)
+    case modifyAccounts        = 0x00020000     // 1 << 17 (modifyUser)
+    case disconnectUsers       = 0x00400000     // 1 << 22 (disconnectUsers) → kick (110)
 }
 
 extension Account {

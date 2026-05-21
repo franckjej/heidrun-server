@@ -46,6 +46,7 @@ public actor HeidrunServer {
                 permissions: AccountPrivilege.disconnectUsers.rawValue
                     | AccountPrivilege.createAccounts.rawValue
                     | AccountPrivilege.deleteAccounts.rawValue
+                    | AccountPrivilege.readAccounts.rawValue
                     | AccountPrivilege.modifyAccounts.rawValue
             )
         }

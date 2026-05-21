@@ -147,6 +147,18 @@ public actor ClientSession {
         case 110:
             await handleKick(header: header, fields: fields)
             return true
+        case 350:
+            await handleCreateLogin(header: header, fields: fields)
+            return true
+        case 351:
+            await handleDeleteLogin(header: header, fields: fields)
+            return true
+        case 352:
+            await handleOpenLogin(header: header, fields: fields)
+            return true
+        case 353:
+            await handleModifyLogin(header: header, fields: fields)
+            return true
         default:
             return true
         }
