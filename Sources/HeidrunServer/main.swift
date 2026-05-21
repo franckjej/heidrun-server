@@ -27,16 +27,22 @@ struct HeidrunServerExecutable {
             exit(1)
         }
 
-        let signalSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
-        signalSource.setEventHandler {
-            Task {
-                await server.stop()
-                exit(0)
+        // Block on SIGINT. The continuation must be resumed (not just
+        // dropped) — Swift treats a leaked continuation as a programmer
+        // error and logs "SWIFT TASK CONTINUATION MISUSE". Capturing the
+        // continuation inside the signal handler lets us resume it on
+        // SIGINT, drain the server, and let `main()` return cleanly.
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let signalSource = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+            signalSource.setEventHandler {
+                signalSource.cancel()
+                Task {
+                    await server.stop()
+                    continuation.resume()
+                }
             }
+            signal(SIGINT, SIG_IGN)
+            signalSource.resume()
         }
-        signal(SIGINT, SIG_IGN)
-        signalSource.resume()
-
-        await withCheckedContinuation { (_: CheckedContinuation<Void, Never>) in }
     }
 }
