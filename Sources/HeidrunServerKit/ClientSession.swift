@@ -185,11 +185,17 @@ public actor ClientSession {
     /// `false` to break out of the read loop (e.g. on a client-initiated
     /// disconnect transaction).
     private func dispatch(header: PacketHeader, fields: [PacketField]) async -> Bool {
+        // `socketID == 0` means we haven't called `registry.register`
+        // yet — i.e. the session is still pre-login. Mask the
+        // placeholder nickname + socket fields so the log doesn't
+        // look like a real "guest" account; on every dispatch after
+        // `handleLogin` runs, both fields show their assigned values.
+        let isPreLogin = (socketID == 0)
         serverLogger.debug("dispatch", metadata: [
             "transID": "\(header.transactionID)",
             "taskNumber": "\(header.taskNumber)",
-            "socketID": "\(socketID)",
-            "nickname": "\(nickname)",
+            "socketID": isPreLogin ? "—" : "\(socketID)",
+            "nickname": isPreLogin ? "—" : "\(nickname)",
             "remoteHost": "\(remoteHost ?? "—")",
             "tls": "\(isTLS)",
             "fieldCount": "\(fields.count)"
