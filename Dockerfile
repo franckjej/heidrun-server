@@ -41,41 +41,39 @@ RUN apt-get update \
 
 WORKDIR /src
 
-# Step 1: resolve dependencies from Package.swift + Package.resolved
-# alone. This layer is cached as long as those two files don't
-# change, so source edits don't re-fetch the whole SPM graph.
-#
-# The token is written to a temporary entry in /root/.gitconfig
-# inside the RUN, then `--remove-section`'d before the layer
-# commits — git is guaranteed to read this config when SPM shells
-# out to it. Both an HTTPS and an SSH `insteadOf` are registered so
-# that an SPM cache mount carrying an `origin` URL from an earlier
-# build (HTTPS or SSH) still resolves through the authed HTTPS
-# endpoint. If RUN fails before the cleanup line, the layer is
-# discarded entirely — the token has no path into the final image.
+# Bring in the package manifest + sources. Tests/ is needed even
+# though we only build the executable product — SPM parses the
+# .testTarget declaration during package-graph resolution and fails
+# with "overlapping sources" if Tests/HeidrunServerKitTests/ isn't
+# present at the path it expects.
 COPY Package.swift Package.resolved ./
+COPY Sources ./Sources
+COPY Tests ./Tests
+
+# Single RUN: resolve + build + install share one auth setup. The
+# token is written to a temporary entry in /root/.gitconfig, then
+# `--remove-section`'d before the layer commits — git is guaranteed
+# to read this config when SPM shells out to it. Three insteadOf
+# rewrites cover HTTPS plus both SSH URL shapes so that a cache
+# mount carrying an `origin` URL from an earlier build still
+# resolves through the authed HTTPS endpoint. If RUN fails before
+# the cleanup line, the layer is discarded entirely — the token has
+# no path into the final image.
 RUN --mount=type=secret,id=gh_token,required=true \
     --mount=type=cache,target=/root/.cache/org.swift.swiftpm \
+    --mount=type=cache,target=/src/.build \
     GH_TOKEN="$(cat /run/secrets/gh_token)" \
  && AUTHED_BASE="https://x-access-token:${GH_TOKEN}@github.com/" \
  && git config --global "url.${AUTHED_BASE}.insteadOf" "https://github.com/" \
  && git config --global --add "url.${AUTHED_BASE}.insteadOf" "git@github.com:" \
  && git config --global --add "url.${AUTHED_BASE}.insteadOf" "ssh://git@github.com/" \
- && swift package resolve \
- && git config --global --remove-section "url.${AUTHED_BASE}"
-
-# Step 2: bring in the sources and build. No secret needed here — the
-# resolve step already populated the SPM checkout cache, so the build
-# step only reads from disk.
-COPY Sources ./Sources
-RUN --mount=type=cache,target=/root/.cache/org.swift.swiftpm \
-    --mount=type=cache,target=/src/.build \
-    swift build \
+ && swift build \
       --configuration release \
       --product HeidrunServer \
  && install -m 0755 \
       .build/release/HeidrunServer \
-      /usr/local/bin/heidrun-server
+      /usr/local/bin/heidrun-server \
+ && git config --global --remove-section "url.${AUTHED_BASE}"
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Runtime stage

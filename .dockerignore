@@ -1,6 +1,11 @@
 # The Dockerfile only COPYs Package.swift, Package.resolved, Sources,
-# and heidrun-server.example.toml — everything else here is belt-and-
-# suspenders to keep the build context small and reproducible.
+# Tests, and heidrun-server.example.toml — everything else here is
+# belt-and-suspenders to keep the build context small and reproducible.
+#
+# Tests/ is intentionally NOT excluded: SPM parses the .testTarget
+# declaration in Package.swift even when we only build the executable
+# product, and bails out with "overlapping sources" if it can't find
+# Tests/HeidrunServerKitTests/ at the declared path.
 
 .git
 .gitignore
@@ -12,7 +17,6 @@
 *.xcworkspace
 DerivedData
 
-Tests
 deploy
 README.md
 docker-compose.yml
