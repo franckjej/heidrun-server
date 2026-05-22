@@ -42,15 +42,17 @@ public actor HeidrunServer {
         )
         let fileVault = try FileVault(rootPath: configuration.filesRootPath)
         if let bootstrap = configuration.bootstrapAdmin {
+            // Seed every defined privilege so the bootstrap admin can
+            // actually administer. The HeidrunServer-side
+            // `AccountPrivilege` enum only models the bits we currently
+            // enforce server-side; the client UI gates many more
+            // buttons on the full `UserPrivileges` set, and missing
+            // bits look like "you don't have permission" in the client.
             _ = try await accountStore.bootstrapIfEmpty(
                 login: bootstrap.login,
                 password: bootstrap.password,
                 nickname: bootstrap.nickname,
-                permissions: AccountPrivilege.disconnectUsers.rawValue
-                    | AccountPrivilege.createAccounts.rawValue
-                    | AccountPrivilege.deleteAccounts.rawValue
-                    | AccountPrivilege.readAccounts.rawValue
-                    | AccountPrivilege.modifyAccounts.rawValue
+                permissions: UserPrivileges.all.rawValue
             )
         }
         self.accounts = accountStore
