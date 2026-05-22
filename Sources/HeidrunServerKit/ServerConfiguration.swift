@@ -49,6 +49,17 @@ public struct ServerConfiguration: Sendable {
     /// `serverName` when unset so an unconfigured server still gets a
     /// readable directory entry.
     public var trackerDescription: String?
+    /// Control-channel port for the TLS sibling listener. The TLS
+    /// transfer port is always `tlsPort + 1`. `nil` skips TLS entirely
+    /// and the server binds only the cleartext pair. Conventional
+    /// production value is `5502` (cleartext 5500, TLS 5502).
+    public var tlsPort: UInt16?
+    /// PEM-encoded certificate chain (server cert + any intermediates).
+    /// Required when `tlsPort` is set.
+    public var tlsCertificatePath: String?
+    /// PEM-encoded private key matching `tlsCertificatePath`. Required
+    /// when `tlsPort` is set.
+    public var tlsPrivateKeyPath: String?
 
     public init(
         port: UInt16 = 5500,
@@ -63,7 +74,10 @@ public struct ServerConfiguration: Sendable {
         filesRootPath: String? = nil,
         newsStatePath: String? = nil,
         trackers: [TrackerHost] = [],
-        trackerDescription: String? = nil
+        trackerDescription: String? = nil,
+        tlsPort: UInt16? = nil,
+        tlsCertificatePath: String? = nil,
+        tlsPrivateKeyPath: String? = nil
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -78,5 +92,8 @@ public struct ServerConfiguration: Sendable {
         self.newsStatePath = newsStatePath
         self.trackers = trackers
         self.trackerDescription = trackerDescription
+        self.tlsPort = tlsPort
+        self.tlsCertificatePath = tlsCertificatePath
+        self.tlsPrivateKeyPath = tlsPrivateKeyPath
     }
 }

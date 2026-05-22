@@ -1,6 +1,7 @@
 import Foundation
 import NIOCore
 import NIOPosix
+import NIOSSL
 import HeidrunCore
 
 /// Top-level server. `start()` binds the control TCP listener on the
@@ -17,6 +18,8 @@ public actor HeidrunServer {
     private var group: (any EventLoopGroup)?
     private var controlChannel: (any Channel)?
     private var transferChannel: (any Channel)?
+    private var tlsControlChannel: (any Channel)?
+    private var tlsTransferChannel: (any Channel)?
     private var trackerAnnouncer: TrackerAnnouncer?
 
     public init(
@@ -82,51 +85,25 @@ public actor HeidrunServer {
         let configurationCopy = self.configuration
         let stringEncodingCopy = self.stringEncoding
 
-        let controlBootstrap = ServerBootstrap(group: eventLoopGroup)
-            .serverChannelOption(ChannelOptions.backlog, value: 64)
-            .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
-            .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
-            .childChannelInitializer { childChannel in
-                let (inboundStream, continuation) = AsyncStream<Data>.makeStream()
-                let readerHandler = SessionIOHandler(continuation: continuation)
-                return childChannel.pipeline.addHandler(readerHandler).map {
-                    let channelBox = UncheckedSendableBox(childChannel)
-                    Task {
-                        await Self.runChildSession(
-                            channelBox: channelBox,
-                            inbound: inboundStream,
-                            registry: registryCopy,
-                            news: newsCopy,
-                            accounts: accountsCopy,
-                            files: filesCopy,
-                            transfers: transfersCopy,
-                            privateChats: privateChatsCopy,
-                            configuration: configurationCopy,
-                            stringEncoding: stringEncodingCopy
-                        )
-                    }
-                }
-            }
+        let controlBootstrap = Self.makeControlBootstrap(
+            on: eventLoopGroup,
+            sslContext: nil,
+            registry: registryCopy,
+            news: newsCopy,
+            accounts: accountsCopy,
+            files: filesCopy,
+            transfers: transfersCopy,
+            privateChats: privateChatsCopy,
+            configuration: configurationCopy,
+            stringEncoding: stringEncodingCopy
+        )
 
-        let transferBootstrap = ServerBootstrap(group: eventLoopGroup)
-            .serverChannelOption(ChannelOptions.backlog, value: 64)
-            .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
-            .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
-            .childChannelInitializer { childChannel in
-                let (inboundStream, continuation) = AsyncStream<Data>.makeStream()
-                let readerHandler = SessionIOHandler(continuation: continuation)
-                return childChannel.pipeline.addHandler(readerHandler).map {
-                    let channelBox = UncheckedSendableBox(childChannel)
-                    Task {
-                        await Self.runTransferChannel(
-                            channelBox: channelBox,
-                            inbound: inboundStream,
-                            transfers: transfersCopy,
-                            files: filesCopy
-                        )
-                    }
-                }
-            }
+        let transferBootstrap = Self.makeTransferBootstrap(
+            on: eventLoopGroup,
+            sslContext: nil,
+            transfers: transfersCopy,
+            files: filesCopy
+        )
 
         // Bind both listeners. When the user asks for port 0 (OS-pick
         // for tests), try a handful of consecutive pairs to find one
@@ -142,6 +119,60 @@ public actor HeidrunServer {
 
         let boundPort = UInt16(control.localAddress?.port ?? 0)
 
+        // Optional TLS sibling pair (control on configuration.tlsPort,
+        // HTXF on tlsPort + 1). Same per-session logic; NIOSSL is
+        // prepended to the pipeline so the rest of the stack reads
+        // decrypted bytes. A partially-configured TLS section (port
+        // set but cert/key missing, or vice versa) fails the start so
+        // operators never silently fall back to cleartext-only when
+        // they thought they had TLS.
+        let boundTLSPort: UInt16
+        if let tlsPort = configuration.tlsPort {
+            guard let certPath = configuration.tlsCertificatePath,
+                  let keyPath = configuration.tlsPrivateKeyPath else {
+                throw TLSContextBuilder.TLSContextError.loadFailed(
+                    reason: "tls_port set but tls_certificate / tls_private_key missing"
+                )
+            }
+            let sslContext = try TLSContextBuilder.makeContext(
+                certificatePath: certPath,
+                privateKeyPath: keyPath
+            )
+            let tlsControlBootstrap = Self.makeControlBootstrap(
+                on: eventLoopGroup,
+                sslContext: sslContext,
+                registry: registryCopy,
+                news: newsCopy,
+                accounts: accountsCopy,
+                files: filesCopy,
+                transfers: transfersCopy,
+                privateChats: privateChatsCopy,
+                configuration: configurationCopy,
+                stringEncoding: stringEncodingCopy
+            )
+            let tlsTransferBootstrap = Self.makeTransferBootstrap(
+                on: eventLoopGroup,
+                sslContext: sslContext,
+                transfers: transfersCopy,
+                files: filesCopy
+            )
+            let (tlsControl, tlsTransfer) = try await Self.bindPair(
+                controlBootstrap: tlsControlBootstrap,
+                transferBootstrap: tlsTransferBootstrap,
+                bindHost: configuration.bindHost,
+                requestedControlPort: tlsPort
+            )
+            self.tlsControlChannel = tlsControl
+            self.tlsTransferChannel = tlsTransfer
+            boundTLSPort = UInt16(tlsControl.localAddress?.port ?? 0)
+            serverLogger.info("HeidrunServer TLS listener bound", metadata: [
+                "tlsControlPort": "\(boundTLSPort)",
+                "tlsTransferPort": "\(boundTLSPort + 1)"
+            ])
+        } else {
+            boundTLSPort = 0
+        }
+
         // Kick off tracker registration if the operator configured any.
         // The announcer captures a weak read of the registry through the
         // closure so it doesn't extend session lifetimes.
@@ -153,6 +184,7 @@ public actor HeidrunServer {
                 serverName: configuration.serverName,
                 announceDescription: announceDescription,
                 advertisedPort: boundPort,
+                tlsPort: boundTLSPort,
                 userCountProvider: {
                     let live = await registrySnapshot.snapshot()
                     return UInt16(clamping: live.count)
@@ -172,13 +204,110 @@ public actor HeidrunServer {
             await trackerAnnouncer.stop()
         }
         trackerAnnouncer = nil
+        try? await tlsTransferChannel?.close().get()
+        try? await tlsControlChannel?.close().get()
         try? await transferChannel?.close().get()
         try? await controlChannel?.close().get()
         try? await group?.shutdownGracefully()
         controlChannel = nil
         transferChannel = nil
+        tlsControlChannel = nil
+        tlsTransferChannel = nil
         group = nil
         serverLogger.debug("HeidrunServer fully stopped")
+    }
+
+    /// Build the per-port control-channel `ServerBootstrap`. When
+    /// `sslContext` is non-nil, prepends an `NIOSSLServerHandler` so
+    /// the rest of the pipeline reads decrypted bytes — the per-
+    /// session async task downstream is identical to the cleartext
+    /// path.
+    private static func makeControlBootstrap(
+        on eventLoopGroup: any EventLoopGroup,
+        sslContext: NIOSSLContext?,
+        registry: UserRegistry,
+        news: NewsTree,
+        accounts: AccountStore,
+        files: FileVault,
+        transfers: TransferRegistry,
+        privateChats: PrivateChatRegistry,
+        configuration: ServerConfiguration,
+        stringEncoding: String.Encoding
+    ) -> ServerBootstrap {
+        ServerBootstrap(group: eventLoopGroup)
+            .serverChannelOption(ChannelOptions.backlog, value: 64)
+            .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+            .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+            .childChannelInitializer { childChannel in
+                let prelude: EventLoopFuture<Void>
+                if let sslContext {
+                    prelude = childChannel.pipeline.addHandler(
+                        NIOSSLServerHandler(context: sslContext)
+                    )
+                } else {
+                    prelude = childChannel.eventLoop.makeSucceededVoidFuture()
+                }
+                return prelude.flatMap {
+                    let (inboundStream, continuation) = AsyncStream<Data>.makeStream()
+                    let readerHandler = SessionIOHandler(continuation: continuation)
+                    return childChannel.pipeline.addHandler(readerHandler).map {
+                        let channelBox = UncheckedSendableBox(childChannel)
+                        Task {
+                            await Self.runChildSession(
+                                channelBox: channelBox,
+                                inbound: inboundStream,
+                                registry: registry,
+                                news: news,
+                                accounts: accounts,
+                                files: files,
+                                transfers: transfers,
+                                privateChats: privateChats,
+                                configuration: configuration,
+                                stringEncoding: stringEncoding
+                            )
+                        }
+                    }
+                }
+            }
+    }
+
+    /// Build the per-port HTXF transfer-channel `ServerBootstrap`.
+    /// Same TLS-prepending pattern as `makeControlBootstrap`.
+    private static func makeTransferBootstrap(
+        on eventLoopGroup: any EventLoopGroup,
+        sslContext: NIOSSLContext?,
+        transfers: TransferRegistry,
+        files: FileVault
+    ) -> ServerBootstrap {
+        ServerBootstrap(group: eventLoopGroup)
+            .serverChannelOption(ChannelOptions.backlog, value: 64)
+            .serverChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+            .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
+            .childChannelInitializer { childChannel in
+                let prelude: EventLoopFuture<Void>
+                if let sslContext {
+                    prelude = childChannel.pipeline.addHandler(
+                        NIOSSLServerHandler(context: sslContext)
+                    )
+                } else {
+                    prelude = childChannel.eventLoop.makeSucceededVoidFuture()
+                }
+                return prelude.flatMap {
+                    let (inboundStream, continuation) = AsyncStream<Data>.makeStream()
+                    let readerHandler = SessionIOHandler(continuation: continuation)
+                    return childChannel.pipeline.addHandler(readerHandler).map {
+                        let channelBox = UncheckedSendableBox(childChannel)
+                        Task {
+                            await Self.runTransferChannel(
+                                channelBox: channelBox,
+                                inbound: inboundStream,
+                                transfers: transfers,
+                                files: files
+                            )
+                        }
+                    }
+                }
+            }
     }
 
     private static func bindPair(

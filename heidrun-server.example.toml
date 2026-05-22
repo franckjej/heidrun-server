@@ -4,7 +4,8 @@
 # Env vars (HEIDRUN_PORT, HEIDRUN_BIND_HOST, HEIDRUN_DB_PATH,
 # HEIDRUN_FILES_ROOT, HEIDRUN_ADMIN_LOGIN, HEIDRUN_ADMIN_PASSWORD,
 # HEIDRUN_ADMIN_NICKNAME, HEIDRUN_SERVER_NAME, HEIDRUN_AGREEMENT,
-# HEIDRUN_LOG_LEVEL, HEIDRUN_TRACKERS, HEIDRUN_TRACKER_DESCRIPTION)
+# HEIDRUN_LOG_LEVEL, HEIDRUN_TRACKERS, HEIDRUN_TRACKER_DESCRIPTION,
+# HEIDRUN_TLS_PORT, HEIDRUN_TLS_CERTIFICATE, HEIDRUN_TLS_PRIVATE_KEY)
 # override whatever is set here.
 #
 # Every key is optional; missing keys fall back to built-in defaults.
@@ -59,3 +60,21 @@ nickname = "Admin"
 #     "private.example:5498:my-tracker-password"
 # ]
 # tracker_description = "Heidrun on hosting.tastybytes.org"
+
+# TLS sibling listener. When `tls_port` is set, the server binds a
+# second control listener on `tls_port` and a second HTXF listener
+# on `tls_port + 1`, both TLS-wrapped. The cleartext pair on
+# `port` / `port + 1` stays up for legacy clients. Omit `tls_port`
+# (or leave it at 0) to disable TLS entirely.
+#
+# `tls_certificate` is a PEM-encoded certificate chain (server cert
+# first, then any intermediates). `tls_private_key` is the matching
+# PEM-encoded private key. Both files must be readable by the
+# `heidrun` user when running in Docker.
+#
+# Recommended setup: Let's Encrypt via DNS-01 challenge with cert +
+# fullchain installed at the paths below. Server restart picks up
+# renewed certs on next bind.
+# tls_port = 5502
+# tls_certificate = "/etc/heidrun-server/tls/fullchain.pem"
+# tls_private_key = "/etc/heidrun-server/tls/privkey.pem"

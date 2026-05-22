@@ -115,6 +115,9 @@ built-in defaults.**
 | `HEIDRUN_ADMIN_NICKNAME` | `Admin` | Nickname for the bootstrap admin |
 | `HEIDRUN_TRACKERS` | _(empty)_ | Comma-separated `host[:port][:password]` list of trackers to register with (mobius-compatible). Empty disables tracker registration |
 | `HEIDRUN_TRACKER_DESCRIPTION` | _(server name)_ | Free-text description shown in tracker listings |
+| `HEIDRUN_TLS_PORT` | _(unset)_ | Sibling TLS control port. Transfer TLS is `tls_port + 1`. Unset / 0 disables TLS entirely |
+| `HEIDRUN_TLS_CERTIFICATE` | _(unset)_ | Path to PEM-encoded TLS certificate chain |
+| `HEIDRUN_TLS_PRIVATE_KEY` | _(unset)_ | Path to PEM-encoded TLS private key |
 | `HEIDRUN_LOG_LEVEL` | `info` | swift-log level: `trace` / `debug` / `info` / `notice` / `warning` / `error` / `critical` |
 
 ### TOML config file
@@ -195,7 +198,6 @@ the remaining v1.5 item in this area.
 
 The following are deferred to v1.5:
 
-- TLS-wrapped variant on a sibling port (currently cleartext only)
 - Persistent file icons (HFS type/creator + comments now persist; icon
   blobs are still deferred)
 - Server banner image

@@ -39,6 +39,12 @@ public struct ServerConfigurationFile: Codable, Sendable {
     /// Free-text description rendered in tracker listings. Falls back
     /// to `serverName` if missing.
     public var trackerDescription: String?
+    /// Control-channel TLS sibling port. Missing / 0 disables TLS.
+    public var tlsPort: UInt16?
+    /// Path to the PEM cert chain for the TLS listener.
+    public var tlsCertificate: String?
+    /// Path to the PEM private key for the TLS listener.
+    public var tlsPrivateKey: String?
 
     public struct BootstrapAdminFile: Codable, Sendable {
         public var login: String?
@@ -67,7 +73,10 @@ public struct ServerConfigurationFile: Codable, Sendable {
         agreement: String? = nil,
         bootstrapAdmin: BootstrapAdminFile? = nil,
         trackers: [String]? = nil,
-        trackerDescription: String? = nil
+        trackerDescription: String? = nil,
+        tlsPort: UInt16? = nil,
+        tlsCertificate: String? = nil,
+        tlsPrivateKey: String? = nil
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -80,6 +89,9 @@ public struct ServerConfigurationFile: Codable, Sendable {
         self.bootstrapAdmin = bootstrapAdmin
         self.trackers = trackers
         self.trackerDescription = trackerDescription
+        self.tlsPort = tlsPort
+        self.tlsCertificate = tlsCertificate
+        self.tlsPrivateKey = tlsPrivateKey
     }
 
     enum CodingKeys: String, CodingKey {
@@ -94,6 +106,9 @@ public struct ServerConfigurationFile: Codable, Sendable {
         case bootstrapAdmin = "bootstrap_admin"
         case trackers
         case trackerDescription = "tracker_description"
+        case tlsPort = "tls_port"
+        case tlsCertificate = "tls_certificate"
+        case tlsPrivateKey = "tls_private_key"
     }
 
     public enum LoadError: Swift.Error, Equatable {
@@ -176,6 +191,20 @@ public struct ServerConfigurationFile: Codable, Sendable {
         let resolvedTrackerDescription = environment["HEIDRUN_TRACKER_DESCRIPTION"]
             ?? trackerDescription
 
+        // TLS — all three pieces (port, cert, key) need to be present
+        // to enable the sibling listener. A missing piece keeps TLS
+        // off; a partially-configured deploy (port set but no cert)
+        // surfaces as a critical startup error in HeidrunServer.start
+        // rather than silently running cleartext-only.
+        let resolvedTLSPort: UInt16? = {
+            if let raw = environment["HEIDRUN_TLS_PORT"], let parsed = UInt16(raw), parsed > 0 {
+                return parsed
+            }
+            return (tlsPort.flatMap { $0 > 0 ? $0 : nil })
+        }()
+        let resolvedTLSCertificate = environment["HEIDRUN_TLS_CERTIFICATE"] ?? tlsCertificate
+        let resolvedTLSPrivateKey = environment["HEIDRUN_TLS_PRIVATE_KEY"] ?? tlsPrivateKey
+
         return ServerConfiguration(
             port: resolvedPort,
             bindHost: resolvedBindHost,
@@ -186,7 +215,10 @@ public struct ServerConfigurationFile: Codable, Sendable {
             filesRootPath: resolvedFilesRoot,
             newsStatePath: resolvedNewsStatePath,
             trackers: resolvedTrackers,
-            trackerDescription: resolvedTrackerDescription
+            trackerDescription: resolvedTrackerDescription,
+            tlsPort: resolvedTLSPort,
+            tlsCertificatePath: resolvedTLSCertificate,
+            tlsPrivateKeyPath: resolvedTLSPrivateKey
         )
     }
 }
