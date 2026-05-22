@@ -3,7 +3,7 @@ import Logging
 import HeidrunServerKit
 
 @main
-struct HeidrunServerExecutable {
+enum HeidrunServerExecutable {
     static func main() async {
         let environment = ProcessInfo.processInfo.environment
 
