@@ -19,6 +19,11 @@
 # ──────────────────────────────────────────────────────────────────────────────
 FROM swift:6.2-jammy AS build
 
+# GRDB links system SQLite; the base image doesn't ship the dev headers.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libsqlite3-dev \
+ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /src
 
 # Copy only the SPM packages HeidrunServer needs to keep the layer
@@ -43,6 +48,11 @@ RUN install -m 0755 \
 # Runtime stage
 # ──────────────────────────────────────────────────────────────────────────────
 FROM swift:6.2-jammy-slim AS runtime
+
+# GRDB dlopens libsqlite3 at runtime; the slim image doesn't include it.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libsqlite3-0 \
+ && rm -rf /var/lib/apt/lists/*
 
 # A non-root account owns the state directories.
 RUN useradd --system --home-dir /var/lib/heidrun --shell /usr/sbin/nologin heidrun \
