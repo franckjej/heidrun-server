@@ -66,8 +66,7 @@ struct HeidrunServerExecutable {
             let sigint = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
             let sigterm = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
             let resumeOnce = ContinuationGuard(continuation: continuation)
-            for source in [sigint, sigterm] {
-                let signalName = source === sigint ? "SIGINT" : "SIGTERM"
+            for (signalName, source) in [("SIGINT", sigint), ("SIGTERM", sigterm)] {
                 source.setEventHandler {
                     sigint.cancel()
                     sigterm.cancel()
