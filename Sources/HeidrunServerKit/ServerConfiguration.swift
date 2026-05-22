@@ -16,6 +16,10 @@ public struct ServerConfiguration: Sendable {
     }
 
     public var port: UInt16
+    /// Interface to bind on. Defaults to `0.0.0.0` (all interfaces).
+    /// Set to `127.0.0.1` for loopback-only deployments — useful when
+    /// the server sits behind a reverse proxy or for local development.
+    public var bindHost: String
     public var serverName: String
     public var agreement: String?
     public var advertisedVersion: UInt16
@@ -36,6 +40,7 @@ public struct ServerConfiguration: Sendable {
 
     public init(
         port: UInt16 = 5500,
+        bindHost: String = "0.0.0.0",
         serverName: String = "Heidrun",
         agreement: String? = nil,
         advertisedVersion: UInt16 = 185,
@@ -46,6 +51,7 @@ public struct ServerConfiguration: Sendable {
         filesRootPath: String? = nil
     ) {
         self.port = port
+        self.bindHost = bindHost
         self.serverName = serverName
         self.agreement = agreement
         self.advertisedVersion = advertisedVersion

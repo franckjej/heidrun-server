@@ -25,6 +25,7 @@ import TOMLKit
 /// ```
 public struct ServerConfigurationFile: Codable, Sendable {
     public var port: UInt16?
+    public var bindHost: String?
     public var serverName: String?
     public var logLevel: String?
     public var dbPath: String?
@@ -50,6 +51,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
 
     public init(
         port: UInt16? = nil,
+        bindHost: String? = nil,
         serverName: String? = nil,
         logLevel: String? = nil,
         dbPath: String? = nil,
@@ -58,6 +60,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
         bootstrapAdmin: BootstrapAdminFile? = nil
     ) {
         self.port = port
+        self.bindHost = bindHost
         self.serverName = serverName
         self.logLevel = logLevel
         self.dbPath = dbPath
@@ -68,6 +71,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case port
+        case bindHost = "bind_host"
         case serverName = "server_name"
         case logLevel = "log_level"
         case dbPath = "db_path"
@@ -108,6 +112,9 @@ public struct ServerConfigurationFile: Codable, Sendable {
             }
             return port ?? 5500
         }()
+        let resolvedBindHost = environment["HEIDRUN_BIND_HOST"]
+            ?? bindHost
+            ?? "0.0.0.0"
         let resolvedServerName = environment["HEIDRUN_SERVER_NAME"]
             ?? serverName
             ?? "Heidrun"
@@ -129,6 +136,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
 
         return ServerConfiguration(
             port: resolvedPort,
+            bindHost: resolvedBindHost,
             serverName: resolvedServerName,
             agreement: resolvedAgreement,
             accountStorePath: resolvedDBPath,

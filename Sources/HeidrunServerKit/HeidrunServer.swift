@@ -117,6 +117,7 @@ public actor HeidrunServer {
         let (control, transfer) = try await Self.bindPair(
             controlBootstrap: controlBootstrap,
             transferBootstrap: transferBootstrap,
+            bindHost: configuration.bindHost,
             requestedControlPort: configuration.port
         )
         self.controlChannel = control
@@ -138,15 +139,16 @@ public actor HeidrunServer {
     private static func bindPair(
         controlBootstrap: ServerBootstrap,
         transferBootstrap: ServerBootstrap,
+        bindHost: String,
         requestedControlPort: UInt16
     ) async throws -> (any Channel, any Channel) {
         if requestedControlPort != 0 {
             // Fixed-port mode — let the second bind throw if the
             // adjacent port is occupied. Real deployments assume
             // operators have arranged for both ports to be free.
-            let control = try await controlBootstrap.bind(host: "127.0.0.1", port: Int(requestedControlPort)).get()
+            let control = try await controlBootstrap.bind(host: bindHost, port: Int(requestedControlPort)).get()
             do {
-                let transfer = try await transferBootstrap.bind(host: "127.0.0.1", port: Int(requestedControlPort + 1)).get()
+                let transfer = try await transferBootstrap.bind(host: bindHost, port: Int(requestedControlPort + 1)).get()
                 return (control, transfer)
             } catch {
                 try? await control.close().get()
@@ -159,10 +161,10 @@ public actor HeidrunServer {
         var lastError: Error?
         for _ in 0..<16 {
             do {
-                let control = try await controlBootstrap.bind(host: "127.0.0.1", port: 0).get()
+                let control = try await controlBootstrap.bind(host: bindHost, port: 0).get()
                 let controlPort = UInt16(control.localAddress?.port ?? 0)
                 do {
-                    let transfer = try await transferBootstrap.bind(host: "127.0.0.1", port: Int(controlPort + 1)).get()
+                    let transfer = try await transferBootstrap.bind(host: bindHost, port: Int(controlPort + 1)).get()
                     return (control, transfer)
                 } catch {
                     try? await control.close().get()
