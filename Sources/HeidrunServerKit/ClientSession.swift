@@ -34,6 +34,11 @@ public actor ClientSession {
     /// Wall-clock timestamp of the successful login. `nil` while still
     /// in handshake / pre-auth.
     var loginAt: Date?
+    /// `true` when this session arrived on the TLS sibling listener
+    /// (control port + 1 pair). Surfaced in the dispatch log + the
+    /// 303 getClientInfoText profile so admins can confirm a user is
+    /// connected end-to-end-encrypted.
+    let isTLS: Bool
 
     public init(
         registry: UserRegistry,
@@ -45,6 +50,7 @@ public actor ClientSession {
         configuration: ServerConfiguration,
         stringEncoding: String.Encoding,
         remoteHost: String? = nil,
+        isTLS: Bool = false,
         writer: @escaping @Sendable (Data) async throws -> Void,
         closer: @escaping @Sendable () async -> Void
     ) {
@@ -57,6 +63,7 @@ public actor ClientSession {
         self.configuration = configuration
         self.stringEncoding = stringEncoding
         self.remoteHost = remoteHost
+        self.isTLS = isTLS
         self.writer = writer
         self.closer = closer
     }
@@ -80,6 +87,7 @@ public actor ClientSession {
         public let remoteHost: String?
         public let clientVersion: UInt16?
         public let loginAt: Date?
+        public let isTLS: Bool
     }
 
     public func infoSnapshot() -> InfoSnapshot {
@@ -90,7 +98,8 @@ public actor ClientSession {
             accountLogin: authenticatedAccount?.login,
             remoteHost: remoteHost,
             clientVersion: clientVersion,
-            loginAt: loginAt
+            loginAt: loginAt,
+            isTLS: isTLS
         )
     }
 
@@ -166,7 +175,8 @@ public actor ClientSession {
             serverLogger.info("user disconnected", metadata: [
                 "socketID": "\(leftSocket)",
                 "nickname": "\(nickname)",
-                "remoteHost": "\(remoteHost ?? "—")"
+                "remoteHost": "\(remoteHost ?? "—")",
+                "tls": "\(isTLS)"
             ])
         }
     }
@@ -181,6 +191,7 @@ public actor ClientSession {
             "socketID": "\(socketID)",
             "nickname": "\(nickname)",
             "remoteHost": "\(remoteHost ?? "—")",
+            "tls": "\(isTLS)",
             "fieldCount": "\(fields.count)"
         ])
         switch header.transactionID {
@@ -349,7 +360,8 @@ public actor ClientSession {
             "socketID": "\(assigned)",
             "nickname": "\(nick)",
             "login": "\(login.isEmpty ? "guest" : login)",
-            "remoteHost": "\(remoteHost ?? "—")"
+            "remoteHost": "\(remoteHost ?? "—")",
+            "tls": "\(isTLS)"
         ])
 
         let reply = PacketEncoder.loginReply(
@@ -451,6 +463,8 @@ public actor ClientSession {
         let loginTm = snapshot?.loginAt.map(Self.formatLoginTime) ?? "—"
         let status  = UserStatus(rawValue: member.status)
 
+        let tls = (snapshot?.isTLS ?? false) ? "yes" : "no"
+
         let lines: [String] = [
             row("name", member.nickname),
             row("login", login),
@@ -460,6 +474,7 @@ public actor ClientSession {
             row("color", "\(status.color)"),
             row("icon", "\(member.icon)"),
             row("login tm", loginTm),
+            row("tls", tls),
             "--------------------------------",
             " - Downloads -",
             " - Uploads -"

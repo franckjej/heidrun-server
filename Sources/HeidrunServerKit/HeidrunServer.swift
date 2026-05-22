@@ -240,12 +240,15 @@ public actor HeidrunServer {
             .childChannelOption(ChannelOptions.socketOption(.so_reuseaddr), value: 1)
             .childChannelInitializer { childChannel in
                 let prelude: EventLoopFuture<Void>
+                let isTLS: Bool
                 if let sslContext {
                     prelude = childChannel.pipeline.addHandler(
                         NIOSSLServerHandler(context: sslContext)
                     )
+                    isTLS = true
                 } else {
                     prelude = childChannel.eventLoop.makeSucceededVoidFuture()
+                    isTLS = false
                 }
                 return prelude.flatMap {
                     let (inboundStream, continuation) = AsyncStream<Data>.makeStream()
@@ -263,7 +266,8 @@ public actor HeidrunServer {
                                 transfers: transfers,
                                 privateChats: privateChats,
                                 configuration: configuration,
-                                stringEncoding: stringEncoding
+                                stringEncoding: stringEncoding,
+                                isTLS: isTLS
                             )
                         }
                     }
@@ -367,7 +371,8 @@ public actor HeidrunServer {
         transfers: TransferRegistry,
         privateChats: PrivateChatRegistry,
         configuration: ServerConfiguration,
-        stringEncoding: String.Encoding
+        stringEncoding: String.Encoding,
+        isTLS: Bool
     ) async {
         let remoteHost: String? = {
             guard let address = channelBox.value.remoteAddress else { return nil }
@@ -386,6 +391,7 @@ public actor HeidrunServer {
             configuration: configuration,
             stringEncoding: stringEncoding,
             remoteHost: remoteHost,
+            isTLS: isTLS,
             writer: { packet in
                 let outChannel = channelBox.value
                 var buffer = outChannel.allocator.buffer(capacity: packet.count)
