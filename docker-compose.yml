@@ -6,7 +6,10 @@
 # Stop:
 #   docker compose -f Packages/HeidrunServer/docker-compose.yml down
 #
-# State persists in the `heidrun-data` named volume (DB + files root).
+# State persists in the `heidrun-data` named volume (DB + news JSON +
+# the file tree by default — see the "files tree" notes below for how
+# to point the file tree at an existing host directory instead).
+#
 # To change the admin password, edit the `HEIDRUN_ADMIN_PASSWORD`
 # entry below before the first `up` (the seed only fires against an
 # empty DB). After first launch, change passwords via the modifyLogin
@@ -24,12 +27,52 @@ services:
       - "5500:5500"          # control channel
       - "5501:5501"          # HTXF transfer side-channel
     volumes:
+      # Default: SQLite DB + news state JSON + (unless overridden
+      # below) the file tree all live in this named volume.
       - heidrun-data:/var/lib/heidrun
+
+      # --- Optional: hook up an existing files tree on the host ---
+      #
+      # Bind-mount a host directory (e.g. a multi-TB RAID at
+      # /home/files) at a stable path inside the container, then point
+      # HEIDRUN_FILES_ROOT at it via the `environment:` block below.
+      # Bind mounts are NOT copied or seeded — the existing tree shows
+      # up to the server as-is, and `down`/`up` cycles never touch it.
+      #
+      # Before the first `up`, make /home/files readable + writable by
+      # the container's `heidrun` user (UID/GID is whatever
+      # `useradd --system` picked at image-build time):
+      #   HEIDRUN_UID=$(docker exec heidrun-server id -u heidrun)
+      #   HEIDRUN_GID=$(docker exec heidrun-server id -g heidrun)
+      #   sudo chown -R "$HEIDRUN_UID:$HEIDRUN_GID" /home/files
+      #   sudo chmod -R u+rwX,g+rwX /home/files
+      #
+      # SAFETY: a logged-in user with the .deleteFiles / .deleteFolders
+      # privilege bit can wipe files from the RAID via the 204 delete
+      # transaction. Don't grant those bits to non-admin accounts, or
+      # use the read-only / split-layout variants below.
+      #
+      # - /home/files:/srv/heidrun/files
+      #
+      # Read-only variant — files are visible and downloadable, but no
+      # uploads/renames/deletes happen against the RAID:
+      # - /home/files:/srv/heidrun/files:ro
+      #
+      # Split layout — read-only archive + writable incoming area.
+      # Combine with a single HEIDRUN_FILES_ROOT=/srv/heidrun/files
+      # and let clients browse archive/ vs. incoming/:
+      # - /home/files/archive:/srv/heidrun/files/archive:ro
+      # - /home/files/incoming:/srv/heidrun/files/incoming
     environment:
       # Required: a strong bootstrap admin password before first run.
       HEIDRUN_ADMIN_PASSWORD: "CHANGE_ME_BEFORE_FIRST_RUN"
       HEIDRUN_SERVER_NAME: "Heidrun"
       HEIDRUN_LOG_LEVEL: "info"
+
+      # Uncomment together with one of the bind mounts above to point
+      # the file tree at the host directory. The default in the image
+      # is /var/lib/heidrun/files (inside the named volume).
+      # HEIDRUN_FILES_ROOT: /srv/heidrun/files
     # Heidrun clients don't have a TCP health-probe path; the
     # transfer port being open is a workable proxy. Swap to a real
     # protocol check if the upcoming admin CLI ships one.
