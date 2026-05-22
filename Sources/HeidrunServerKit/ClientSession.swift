@@ -12,6 +12,7 @@ public actor ClientSession {
     let accounts: AccountStore
     let files: FileVault
     let transfers: TransferRegistry
+    let privateChats: PrivateChatRegistry
     let configuration: ServerConfiguration
     let stringEncoding: String.Encoding
     let writer: @Sendable (Data) async throws -> Void
@@ -40,6 +41,7 @@ public actor ClientSession {
         accounts: AccountStore,
         files: FileVault,
         transfers: TransferRegistry,
+        privateChats: PrivateChatRegistry,
         configuration: ServerConfiguration,
         stringEncoding: String.Encoding,
         remoteHost: String? = nil,
@@ -51,6 +53,7 @@ public actor ClientSession {
         self.accounts = accounts
         self.files = files
         self.transfers = transfers
+        self.privateChats = privateChats
         self.configuration = configuration
         self.stringEncoding = stringEncoding
         self.remoteHost = remoteHost
@@ -144,6 +147,20 @@ public actor ClientSession {
         // No-op if the session never made it past login (socketID == 0).
         if socketID != 0 {
             let leftSocket = socketID
+            // Drop the session from every private chat it joined so
+            // remaining members' rosters stay accurate.
+            let evictions = await privateChats.evictFromAll(socket: leftSocket)
+            for (chatID, remaining) in evictions {
+                let push = PacketEncoder.privateChatLeftPush(
+                    chatReference: ChatID(rawValue: chatID).data,
+                    socket: leftSocket
+                )
+                for socket in remaining {
+                    if let session = await registry.lookup(socketID: socket) {
+                        await session.send(push)
+                    }
+                }
+            }
             await registry.unregister(socketID: leftSocket)
             await registry.broadcast(PacketEncoder.userLeftPush(socketID: leftSocket))
             serverLogger.info("user disconnected", metadata: [
@@ -242,6 +259,43 @@ public actor ClientSession {
             return true
         case 209:
             await handleMakeAlias(header: header, fields: fields)
+            return true
+        case 304:
+            await handleSetClientUserInfo(header: header, fields: fields)
+            return true
+        case 355:
+            await handleBroadcast(header: header, fields: fields)
+            return true
+        case 380:
+            await handleDeleteNewsBundle(header: header, fields: fields)
+            return true
+        case 411:
+            await handleDeleteNewsThread(header: header, fields: fields)
+            return true
+        case 214:
+            await handleDeleteTransfer(header: header, fields: fields)
+            return true
+        case 112:
+            await handleCreatePrivateChat(header: header, fields: fields)
+            return true
+        case 113:
+            await handleInviteToPrivateChat(header: header, fields: fields)
+            return true
+        case 114:
+            await handleRejectPrivateChat(header: header, fields: fields)
+            return true
+        case 115:
+            await handleJoinPrivateChat(header: header, fields: fields)
+            return true
+        case 116:
+            await handleLeavePrivateChat(header: header, fields: fields)
+            return true
+        case 120:
+            await handleSetPrivateChatSubject(header: header, fields: fields)
+            return true
+        case 500:
+            // 185-style ping. Client sends as no-reply; nothing for
+            // the server to do beyond not falling through silently.
             return true
         default:
             return true

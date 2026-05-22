@@ -44,6 +44,20 @@ public actor UserRegistry {
         members.removeValue(forKey: socketID)
     }
 
+    /// Replace the public-facing nickname / icon for an existing
+    /// session. Called from the `setClientUserInfo` (304) handler so
+    /// the next `getUserList` snapshot reflects the change. Returns
+    /// the updated `Member` (or `nil` if the socket isn't registered)
+    /// so the caller can fan out a `userChanged` (301) push.
+    @discardableResult
+    public func updateMember(socketID: UInt16, nickname: String, icon: UInt16) -> Member? {
+        guard var existing = members[socketID] else { return nil }
+        existing.nickname = nickname
+        existing.icon = icon
+        members[socketID] = existing
+        return existing
+    }
+
     public func snapshot() -> [Member] {
         Array(members.values).sorted { $0.socketID < $1.socketID }
     }

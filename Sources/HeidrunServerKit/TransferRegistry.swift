@@ -56,4 +56,12 @@ public actor TransferRegistry {
     public func claim(transferID: UInt32) -> Pending? {
         pending.removeValue(forKey: transferID)
     }
+
+    /// Drop a pending transfer without consuming it. Returns `true`
+    /// when an entry existed (the client's `deleteTransfer` (214) made
+    /// it through), `false` for unknown IDs.
+    @discardableResult
+    public func cancel(transferID: UInt32) -> Bool {
+        pending.removeValue(forKey: transferID) != nil
+    }
 }

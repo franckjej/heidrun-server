@@ -67,6 +67,20 @@ public actor NewsTree {
         Self.insert(BundleNode(name: name, kind: kind), at: path, in: &threaded)
     }
 
+    /// Remove the bundle (folder *or* category) addressed by `path`.
+    /// The full path identifies the target — e.g. `["root", "child"]`
+    /// removes `child` from `root`. Returns `true` on success.
+    public func removeBundle(at path: [String]) -> Bool {
+        Self.remove(at: path, in: &threaded)
+    }
+
+    /// Remove the post at `articleID` (1-indexed) inside the category
+    /// at `path`. Returns `true` on success; `false` for unknown path
+    /// / out-of-range id / non-category targets.
+    public func removePost(at path: [String], articleID: Int) -> Bool {
+        Self.removePost(articleID: articleID, at: path, in: &threaded)
+    }
+
     // MARK: - Recursive helpers (pure, value-type)
 
     private static func children(in pool: [BundleNode], at path: [String]) -> [BundleNode]? {
@@ -117,5 +131,36 @@ public actor NewsTree {
               let index = pool.firstIndex(where: { $0.name == head }),
               pool[index].kind == .bundle else { return false }
         return insert(node, at: Array(path.dropFirst()), in: &pool[index].children)
+    }
+
+    private static func remove(at path: [String], in pool: inout [BundleNode]) -> Bool {
+        guard let head = path.first else { return false }
+        if path.count == 1 {
+            guard let index = pool.firstIndex(where: { $0.name == head }) else { return false }
+            pool.remove(at: index)
+            return true
+        }
+        guard let index = pool.firstIndex(where: { $0.name == head }),
+              pool[index].kind == .bundle else { return false }
+        return remove(at: Array(path.dropFirst()), in: &pool[index].children)
+    }
+
+    private static func removePost(
+        articleID: Int,
+        at path: [String],
+        in pool: inout [BundleNode]
+    ) -> Bool {
+        guard let head = path.first,
+              let index = pool.firstIndex(where: { $0.name == head }) else { return false }
+        if path.count == 1 {
+            guard pool[index].kind == .category else { return false }
+            let array = pool[index].posts
+            let position = articleID - 1
+            guard position >= 0, position < array.count else { return false }
+            pool[index].posts.remove(at: position)
+            return true
+        }
+        guard pool[index].kind == .bundle else { return false }
+        return removePost(articleID: articleID, at: Array(path.dropFirst()), in: &pool[index].children)
     }
 }

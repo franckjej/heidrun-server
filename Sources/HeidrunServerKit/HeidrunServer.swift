@@ -12,6 +12,7 @@ public actor HeidrunServer {
     private let registry: UserRegistry
     private let news: NewsTree
     private let transfers: TransferRegistry
+    private let privateChats: PrivateChatRegistry
     private var accounts: AccountStore?
     private var group: (any EventLoopGroup)?
     private var controlChannel: (any Channel)?
@@ -26,6 +27,7 @@ public actor HeidrunServer {
         self.registry = UserRegistry()
         self.news = NewsTree(seed: configuration.newsSeed ?? NewsTree.Seed())
         self.transfers = TransferRegistry()
+        self.privateChats = PrivateChatRegistry()
     }
 
     /// Bind the control listener AND the transfer listener (port + 1).
@@ -63,6 +65,7 @@ public actor HeidrunServer {
         let registryCopy = self.registry
         let newsCopy = self.news
         let transfersCopy = self.transfers
+        let privateChatsCopy = self.privateChats
         let accountsCopy = accountStore
         let filesCopy = fileVault
         let configurationCopy = self.configuration
@@ -86,6 +89,7 @@ public actor HeidrunServer {
                             accounts: accountsCopy,
                             files: filesCopy,
                             transfers: transfersCopy,
+                            privateChats: privateChatsCopy,
                             configuration: configurationCopy,
                             stringEncoding: stringEncodingCopy
                         )
@@ -193,6 +197,7 @@ public actor HeidrunServer {
         accounts: AccountStore,
         files: FileVault,
         transfers: TransferRegistry,
+        privateChats: PrivateChatRegistry,
         configuration: ServerConfiguration,
         stringEncoding: String.Encoding
     ) async {
@@ -209,6 +214,7 @@ public actor HeidrunServer {
             accounts: accounts,
             files: files,
             transfers: transfers,
+            privateChats: privateChats,
             configuration: configuration,
             stringEncoding: stringEncoding,
             remoteHost: remoteHost,

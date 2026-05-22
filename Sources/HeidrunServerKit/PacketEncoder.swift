@@ -148,6 +148,103 @@ enum PacketEncoder {
         )
     }
 
+    /// Push transID 355 (`kInfoServerMsg`) — server-wide broadcast.
+    /// Sent to every connected session except the originator (whose
+    /// own request gets an empty 355 reply matched by taskNumber).
+    static func serverBroadcastPush(
+        message: String,
+        encoding: String.Encoding
+    ) -> Data {
+        PacketCodec.encode(
+            classID: 0,
+            transactionID: 355,
+            taskNumber: 0,
+            fields: [PacketField.string(.message, message, encoding: encoding)]
+        )
+    }
+
+    /// Push transID 113 (`privateChatInvitation`) — sent to the
+    /// addressed target when somebody creates a private chat with
+    /// them or invites them to an existing room.
+    static func privateChatInvitePush(
+        chatReference: Data,
+        fromSocket: UInt16,
+        message: String,
+        encoding: String.Encoding
+    ) -> Data {
+        PacketCodec.encode(
+            classID: 0,
+            transactionID: 113,
+            taskNumber: 0,
+            fields: [
+                PacketField(key: .chatReference, data: chatReference),
+                PacketField.uint16(.socket, fromSocket),
+                PacketField.string(.message, message, encoding: encoding)
+            ]
+        )
+    }
+
+    /// Push transID 117 (`privateChatJoined`) — used twice on join:
+    /// once per existing member to hydrate the joiner's roster, then
+    /// once per existing member to announce the joiner.
+    static func privateChatJoinedPush(
+        chatReference: Data,
+        member: UserRegistry.Member,
+        encoding: String.Encoding
+    ) -> Data {
+        let user = User(
+            socket: member.socketID,
+            icon: member.icon,
+            status: UserStatus(rawValue: member.status),
+            privileges: [],
+            nickname: member.nickname
+        )
+        return PacketCodec.encode(
+            classID: 0,
+            transactionID: 117,
+            taskNumber: 0,
+            fields: [
+                PacketField(key: .chatReference, data: chatReference),
+                UserListEntryCodec.encode(user, encoding: encoding)
+            ]
+        )
+    }
+
+    /// Push transID 118 (`privateChatLeft`) — sent to the remaining
+    /// members of the room when somebody leaves or disconnects.
+    static func privateChatLeftPush(
+        chatReference: Data,
+        socket: UInt16
+    ) -> Data {
+        PacketCodec.encode(
+            classID: 0,
+            transactionID: 118,
+            taskNumber: 0,
+            fields: [
+                PacketField(key: .chatReference, data: chatReference),
+                PacketField.uint16(.socket, socket)
+            ]
+        )
+    }
+
+    /// Push transID 119 (`privateChatChangedSubject`) — broadcast a
+    /// new subject to every other member of the addressed room.
+    static func privateChatSubjectPush(
+        chatReference: Data,
+        subject: String,
+        encoding: String.Encoding
+    ) -> Data {
+        PacketCodec.encode(
+            classID: 0,
+            transactionID: 119,
+            taskNumber: 0,
+            fields: [
+                PacketField(key: .chatReference, data: chatReference),
+                PacketField.string(.chatSubject, subject, encoding: encoding)
+            ]
+        )
+    }
+
     /// Push transID 102 (`kInfoNewPost`) for a fresh plain-news post.
     static func plainNewsPostPush(
         line: String,
