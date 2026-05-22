@@ -53,6 +53,13 @@ public actor ClientSession {
         try? await writer(packet)
     }
 
+    /// Login of the account that authenticated this session, or `nil`
+    /// for guests. Used by the `getClientInfoText` (303) handler in
+    /// other sessions when assembling user-info replies.
+    public func accountLogin() -> String? {
+        authenticatedAccount?.login
+    }
+
     /// Drop the underlying TCP connection. The session's `run` loop
     /// observes the close, runs its normal disconnect-cleanup path
     /// (unregister + broadcast `userLeft`), and returns. Used by the
@@ -129,6 +136,9 @@ public actor ClientSession {
             return false                                 // client-initiated disconnect
         case 300:
             await handleUserList(header: header)
+            return true
+        case 303:
+            await handleGetClientInfo(header: header, fields: fields)
             return true
         case 105:
             await handleChat(header: header, fields: fields)
@@ -287,6 +297,38 @@ public actor ClientSession {
             encoding: stringEncoding
         )
         try? await writer(reply)
+    }
+
+    /// Handle `getClientInfoText` (303): look up the addressed user
+    /// and reply with the standard envelope (nickname/icon/status/login
+    /// + a human-readable info text). Targets that aren't logged in
+    /// produce an error reply.
+    private func handleGetClientInfo(header: PacketHeader, fields: [PacketField]) async {
+        let target = fields.uint16(.socket) ?? 0
+        let members = await registry.snapshot()
+        guard let member = members.first(where: { $0.socketID == target }) else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: 303
+            ))
+            return
+        }
+        let targetSession = await registry.lookup(socketID: target)
+        let login = await targetSession?.accountLogin()
+        let infoText = """
+        Name: \(member.nickname)
+        Account: \(login ?? "(guest)")
+        """
+        try? await writer(PacketEncoder.userInfoReply(
+            taskNumber: header.taskNumber,
+            socket: member.socketID,
+            nickname: member.nickname,
+            icon: member.icon,
+            status: member.status,
+            login: login ?? "",
+            infoText: infoText,
+            encoding: stringEncoding
+        ))
     }
 
     private func handleChat(header: PacketHeader, fields: [PacketField]) async {

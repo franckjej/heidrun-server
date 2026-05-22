@@ -163,6 +163,39 @@ enum PacketEncoder {
 
     /// Reply with `errorID == 1` and no payload. Used by handlers that
     /// need to signal failure without a descriptive error message.
+    /// Reply to `getClientInfoText` (303). Carries the target's
+    /// nickname, icon, status, optional account login, and a free-form
+    /// info-text blob the client displays verbatim.
+    static func userInfoReply(
+        taskNumber: UInt32,
+        socket: UInt16,
+        nickname: String,
+        icon: UInt16,
+        status: UInt16,
+        login: String,
+        infoText: String,
+        encoding: String.Encoding
+    ) -> Data {
+        var fields: [PacketField] = [
+            PacketField.uint16(.socket, socket),
+            PacketField.uint16(.icon, icon),
+            PacketField.uint16(.status, status),
+            PacketField.string(.nickname, nickname, encoding: encoding)
+        ]
+        if !login.isEmpty {
+            fields.append(PacketField.string(.login, login, encoding: encoding))
+        }
+        if !infoText.isEmpty {
+            fields.append(PacketField.string(.message, infoText, encoding: encoding))
+        }
+        return PacketCodec.encode(
+            classID: 1,
+            transactionID: 303,
+            taskNumber: taskNumber,
+            fields: fields
+        )
+    }
+
     static func errorReply(taskNumber: UInt32, transactionID: UInt16) -> Data {
         PacketCodec.encode(
             classID: 1,
