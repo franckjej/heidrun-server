@@ -154,6 +154,113 @@ The server binds two adjacent TCP ports: `port` (Hotline control) and
 from clients. Most firewalls just open both — they're conventionally
 5500 + 5501.
 
+When TLS is enabled (`tls_port` / `HEIDRUN_TLS_PORT`), a second pair
+binds on `tls_port` and `tls_port + 1`. The recommended convention is
+5502 + 5503 so the cleartext and TLS ports never share a host:port.
+
+### TLS
+
+The server supports an optional TLS sibling listener pair on top of
+the cleartext one. When configured, both the Hotline control channel
+and HTXF file transfers are encrypted end-to-end; sniffing the wire
+reveals no readable Hotline frames or file bytes. The cleartext pair
+stays bound for legacy clients, so enabling TLS is purely additive.
+
+**1. Get a certificate.** Production deploys use a publicly-issued
+TLS cert (Let's Encrypt is the default choice). Since HeidrunServer
+doesn't speak HTTP, ACME HTTP-01 isn't an option — use **DNS-01**:
+
+```bash
+sudo certbot certonly \
+  --manual --preferred-challenges dns \
+  -d hotline.example.com
+```
+
+Certbot stores the issued cert under
+`/etc/letsencrypt/live/<domain>/` (or wherever your certbot working
+directory points). The two files Heidrun needs are `fullchain.pem`
+(server cert + intermediates) and `privkey.pem`.
+
+**2. Mount the cert pair into the container.** Don't bind-mount
+certbot's working directory directly — Certbot writes `live/` and
+`archive/` as `0700 root:root`, and the unprivileged `heidrun` user
+inside the container can't traverse into them. The first symptom is
+a startup error like
+`error=missingCertificate(path: ".../fullchain.pem")` — misleading;
+the file is there, the process just can't `stat` it past the parent
+directory's perms.
+
+The clean fix is a dedicated heidrun-owned directory on the host that
+mirrors the two files. One-time setup:
+
+```bash
+HEIDRUN_UID=$(docker exec heidrun-server id -u heidrun)
+HEIDRUN_GID=$(docker exec heidrun-server id -g heidrun)
+sudo mkdir -p /etc/heidrun-server/tls
+sudo cp -L /etc/letsencrypt/live/hotline.example.com/fullchain.pem /etc/heidrun-server/tls/
+sudo cp -L /etc/letsencrypt/live/hotline.example.com/privkey.pem   /etc/heidrun-server/tls/
+sudo chown -R "$HEIDRUN_UID:$HEIDRUN_GID" /etc/heidrun-server/tls
+sudo chmod 644 /etc/heidrun-server/tls/fullchain.pem
+sudo chmod 640 /etc/heidrun-server/tls/privkey.pem
+```
+
+The `-L` follows the symlinks under `live/` and copies the real
+bytes — if you skip it, the symlinks dangle inside the container.
+
+Then in `docker-compose.yml`, uncomment the TLS bind mount and the
+three TLS env vars (the compose file's commented stubs match this
+layout verbatim):
+
+```yaml
+volumes:
+  - /etc/heidrun-server/tls:/etc/heidrun-server/tls:ro
+ports:
+  - "5502:5502"
+  - "5503:5503"
+environment:
+  HEIDRUN_TLS_PORT: "5502"
+  HEIDRUN_TLS_CERTIFICATE: "/etc/heidrun-server/tls/fullchain.pem"
+  HEIDRUN_TLS_PRIVATE_KEY: "/etc/heidrun-server/tls/privkey.pem"
+```
+
+If you're using `ufw-docker`, open the two new ports the same way as
+5500/5501 — plain `ufw allow` doesn't cover Docker-DNAT'd ports.
+
+**3. Wire up renewal.** Certbot writes a new cert into `live/<domain>/`
+on every successful `certbot renew`, but the heidrun process loads
+the TLS context once at startup and won't pick up the new file until
+it restarts. Add a deploy hook so a fresh cert auto-propagates and
+the container cycles:
+
+```bash
+sudo tee /etc/letsencrypt/renewal-hooks/deploy/heidrun.sh >/dev/null <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+LIVE_DIR="/etc/letsencrypt/live/hotline.example.com"
+DEST="/etc/heidrun-server/tls"
+HEIDRUN_UID=$(docker exec heidrun-server id -u heidrun)
+HEIDRUN_GID=$(docker exec heidrun-server id -g heidrun)
+cp -L "$LIVE_DIR/fullchain.pem" "$DEST/fullchain.pem"
+cp -L "$LIVE_DIR/privkey.pem"   "$DEST/privkey.pem"
+chown "$HEIDRUN_UID:$HEIDRUN_GID" "$DEST"/{fullchain,privkey}.pem
+chmod 644 "$DEST/fullchain.pem"
+chmod 640 "$DEST/privkey.pem"
+docker compose -f /path/to/heidrun/docker-compose.yml restart heidrun
+EOF
+sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/heidrun.sh
+```
+
+Certbot runs every executable in `renewal-hooks/deploy/` once after
+a successful renewal. The restart only cycles the TLS listener pair;
+existing cleartext sessions are dropped along with it, so consider
+scheduling renewal off-peak if that matters.
+
+**Half-configured deploys fail fast.** Setting `tls_port` without
+both a cert path and a key path throws at startup with a typed
+`TLSContextError.loadFailed(reason: …)` instead of silently falling
+back to cleartext — so an operator who thought they had TLS can't
+end up with an unencrypted listener by accident.
+
 ### State directories
 
 | Path | What's there |
