@@ -10,6 +10,13 @@
 # the file tree by default — see the "files tree" notes below for how
 # to point the file tree at an existing host directory instead).
 #
+# This file is intentionally env-var driven: every server option has a
+# `HEIDRUN_*` environment variable equivalent and they're all listed
+# (commented) under `environment:` below. Uncomment the ones you need.
+# Operators who prefer a TOML config file can mount one and set
+# `HEIDRUN_CONFIG=/path/to/file.toml` — see the very last entry in the
+# environment block. Env vars always override the TOML file.
+#
 # To change the admin password, edit the `HEIDRUN_ADMIN_PASSWORD`
 # entry below before the first `up` (the seed only fires against an
 # empty DB). After first launch, change passwords via the modifyLogin
@@ -24,8 +31,12 @@ services:
     container_name: heidrun-server
     restart: unless-stopped
     ports:
-      - "5500:5500"          # control channel
-      - "5501:5501"          # HTXF transfer side-channel
+      - "5500:5500"          # control channel (cleartext)
+      - "5501:5501"          # HTXF transfer side-channel (cleartext)
+      # TLS sibling pair — uncomment together with the HEIDRUN_TLS_*
+      # env vars below and the TLS cert bind-mount in `volumes:`.
+      # - "5502:5502"        # control channel (TLS)
+      # - "5503:5503"        # HTXF transfer side-channel (TLS)
     volumes:
       # Default: SQLite DB + news state JSON + (unless overridden
       # below) the file tree all live in this named volume.
@@ -63,16 +74,129 @@ services:
       # and let clients browse archive/ vs. incoming/:
       # - /home/files/archive:/srv/heidrun/files/archive:ro
       # - /home/files/incoming:/srv/heidrun/files/incoming
+
+      # --- Optional: TLS certificate + key ---
+      #
+      # Mount the directory holding your TLS PEMs read-only at a
+      # stable path inside the container, then set
+      # HEIDRUN_TLS_CERTIFICATE / HEIDRUN_TLS_PRIVATE_KEY below to
+      # point at the files. With Let's Encrypt's `certbot`, the
+      # standard layout under /etc/letsencrypt/live/<domain>/ maps:
+      #   fullchain.pem -> HEIDRUN_TLS_CERTIFICATE
+      #   privkey.pem   -> HEIDRUN_TLS_PRIVATE_KEY
+      # so a `:ro` bind of the parent directory works directly.
+      # - /etc/heidrun-server/tls:/etc/heidrun-server/tls:ro
     environment:
-      # Required: a strong bootstrap admin password before first run.
+      # ---------------------------------------------------------------
+      # REQUIRED-ISH (these have defaults but you almost always set them)
+      # ---------------------------------------------------------------
+
+      # Bootstrap admin password — seeded ONLY when the accounts DB
+      # is empty. Change this BEFORE first `up`; after that, rotate
+      # via the modifyLogin (353) admin transaction from a client.
       HEIDRUN_ADMIN_PASSWORD: "CHANGE_ME_BEFORE_FIRST_RUN"
+
+      # Display name shown in client user lists + tracker listings.
       HEIDRUN_SERVER_NAME: "Heidrun"
+
+      # swift-log threshold: trace / debug / info / notice / warning /
+      # error / critical. Use `debug` to get per-transaction dispatch
+      # lines tagged with the client IP (remoteHost) for triage.
       HEIDRUN_LOG_LEVEL: "info"
 
-      # Uncomment together with one of the bind mounts above to point
-      # the file tree at the host directory. The default in the image
-      # is /var/lib/heidrun/files (inside the named volume).
-      # HEIDRUN_FILES_ROOT: /srv/heidrun/files
+      # ---------------------------------------------------------------
+      # NETWORK BINDING
+      # ---------------------------------------------------------------
+
+      # Control TCP port; HTXF transfer port is always control + 1.
+      # If you change this, also update the `ports:` mapping above.
+      # HEIDRUN_PORT: "5500"
+
+      # Interface to bind on inside the container. "0.0.0.0" listens
+      # on all interfaces (the normal Docker setup); "127.0.0.1"
+      # restricts to loopback (only useful for sidecar deployments).
+      # HEIDRUN_BIND_HOST: "0.0.0.0"
+
+      # ---------------------------------------------------------------
+      # BOOTSTRAP ADMIN ACCOUNT (only seeded on a fresh DB)
+      # ---------------------------------------------------------------
+
+      # HEIDRUN_ADMIN_LOGIN: "admin"
+      # HEIDRUN_ADMIN_NICKNAME: "Admin"
+
+      # ---------------------------------------------------------------
+      # PATHS (Dockerfile defaults shown — usually fine as-is)
+      # ---------------------------------------------------------------
+
+      # SQLite database file. Holds accounts + per-file metadata
+      # (comments + HFS type/creator).
+      # HEIDRUN_DB_PATH: "/var/lib/heidrun/heidrun.sqlite"
+
+      # Root of the file tree the server serves. Uncomment together
+      # with one of the bind mounts above to point at an existing host
+      # directory (e.g. /srv/heidrun/files when bind-mounting
+      # /home/files); leave commented to use the named volume default.
+      # HEIDRUN_FILES_ROOT: "/var/lib/heidrun/files"
+
+      # News-state JSON snapshot. Leave unset to derive
+      # `<db_path>.news.json` automatically; set to a specific path
+      # to override.
+      # HEIDRUN_NEWS_PATH: "/var/lib/heidrun/heidrun.news.json"
+
+      # ---------------------------------------------------------------
+      # POLICY
+      # ---------------------------------------------------------------
+
+      # Banner text pushed after login (transID 109). Comment out to
+      # skip the agreement push entirely.
+      # HEIDRUN_AGREEMENT: "Welcome to the server. Be kind."
+
+      # ---------------------------------------------------------------
+      # TRACKER REGISTRATION (mobius-compatible host[:port][:password])
+      # ---------------------------------------------------------------
+
+      # Comma-separated list. Omit / empty to disable. Each entry is
+      # `host`, `host:port`, or `host:port:password`. Default port is
+      # 5498. The announcer sends one UDP packet to each tracker every
+      # 5 minutes; failed registrations are logged and skipped.
+      # HEIDRUN_TRACKERS: "hltracker.com,private.example:5498:secret"
+
+      # Free-text description shown in tracker listings (falls back to
+      # HEIDRUN_SERVER_NAME if unset).
+      # HEIDRUN_TRACKER_DESCRIPTION: "Heidrun on hosting.tastybytes.org"
+
+      # ---------------------------------------------------------------
+      # TLS SIBLING LISTENER
+      # ---------------------------------------------------------------
+      #
+      # When HEIDRUN_TLS_PORT is set, the server binds an additional
+      # TLS-wrapped control listener on that port and a TLS-wrapped
+      # HTXF listener on `tls_port + 1`. The cleartext pair stays up
+      # for legacy clients.
+      #
+      # All three TLS vars are required together — `tls_port` set
+      # without a cert/key path fails startup with a clear error
+      # rather than silently falling back to cleartext.
+      #
+      # Cert paths must be readable by the unprivileged `heidrun`
+      # user inside the container. The bind-mount stanza above keeps
+      # them in /etc/heidrun-server/tls.
+      # HEIDRUN_TLS_PORT: "5502"
+      # HEIDRUN_TLS_CERTIFICATE: "/etc/heidrun-server/tls/fullchain.pem"
+      # HEIDRUN_TLS_PRIVATE_KEY: "/etc/heidrun-server/tls/privkey.pem"
+
+      # ---------------------------------------------------------------
+      # TOML CONFIG FILE (opt-in alternative to the env vars above)
+      # ---------------------------------------------------------------
+      #
+      # Setting HEIDRUN_CONFIG points the executable at a TOML file
+      # that lays out the same keys in snake_case form. Env vars
+      # ALWAYS override the file, so a deploy that wants "TOML for
+      # most things, env override for one secret" works naturally.
+      # The Dockerfile bakes a sample at
+      # /etc/heidrun-server/config.toml; bind-mount your own to
+      # /etc/heidrun-server/ if you want to use that path.
+      # HEIDRUN_CONFIG: "/etc/heidrun-server/config.toml"
     # Heidrun clients don't have a TCP health-probe path; the
     # transfer port being open is a workable proxy. Swap to a real
     # protocol check if the upcoming admin CLI ships one.
