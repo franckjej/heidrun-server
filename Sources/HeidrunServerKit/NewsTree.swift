@@ -22,10 +22,22 @@ public actor NewsTree {
 
     private var plain: [String]
     private var threaded: [BundleNode]
+    /// Optional disk path for JSON persistence. When set, every
+    /// mutation rewrites the file atomically; the seed is still used
+    /// as the empty-DB fallback when the file doesn't exist yet.
+    private let persistencePath: String?
 
-    public init(seed: Seed = Seed()) {
-        self.plain = seed.plain
-        self.threaded = seed.threaded
+    public init(seed: Seed = Seed(), persistencePath: String? = nil) {
+        if let persistencePath,
+           let data = try? Data(contentsOf: URL(fileURLWithPath: persistencePath)),
+           let snapshot = try? NewsStateSnapshot.decode(from: data) {
+            self.plain = snapshot.plain
+            self.threaded = snapshot.bundleNodes
+        } else {
+            self.plain = seed.plain
+            self.threaded = seed.threaded
+        }
+        self.persistencePath = persistencePath
     }
 
     /// Plain news feed as one blob — `\r` separates posts. Newest
@@ -37,6 +49,7 @@ public actor NewsTree {
     /// Append a new plain-news post.
     public func appendPlainPost(_ stamped: String) {
         plain.append(stamped)
+        persist()
     }
 
     /// Walk to `path` and return the immediate child nodes — folders
@@ -56,7 +69,9 @@ public actor NewsTree {
     /// success, `false` if the path doesn't exist or terminates in a
     /// folder (folders can't hold posts directly).
     public func appendPost(at path: [String], post: NewsPost) -> Bool {
-        Self.insertPost(post, at: path, in: &threaded)
+        let ok = Self.insertPost(post, at: path, in: &threaded)
+        if ok { persist() }
+        return ok
     }
 
     /// Insert a new bundle (folder) or category named `name` under the
@@ -64,21 +79,39 @@ public actor NewsTree {
     /// path doesn't resolve to a folder, or a sibling with the same
     /// name already exists.
     public func insertBundle(at path: [String], name: String, kind: NewsBundle.Kind) -> Bool {
-        Self.insert(BundleNode(name: name, kind: kind), at: path, in: &threaded)
+        let ok = Self.insert(BundleNode(name: name, kind: kind), at: path, in: &threaded)
+        if ok { persist() }
+        return ok
     }
 
     /// Remove the bundle (folder *or* category) addressed by `path`.
     /// The full path identifies the target — e.g. `["root", "child"]`
     /// removes `child` from `root`. Returns `true` on success.
     public func removeBundle(at path: [String]) -> Bool {
-        Self.remove(at: path, in: &threaded)
+        let ok = Self.remove(at: path, in: &threaded)
+        if ok { persist() }
+        return ok
     }
 
     /// Remove the post at `articleID` (1-indexed) inside the category
     /// at `path`. Returns `true` on success; `false` for unknown path
     /// / out-of-range id / non-category targets.
     public func removePost(at path: [String], articleID: Int) -> Bool {
-        Self.removePost(articleID: articleID, at: path, in: &threaded)
+        let ok = Self.removePost(articleID: articleID, at: path, in: &threaded)
+        if ok { persist() }
+        return ok
+    }
+
+    /// Write the current state to `persistencePath` if one is set.
+    /// Failures are swallowed — losing one mutation to a disk hiccup
+    /// is preferable to a 500 to the client; the next successful
+    /// mutation will catch up.
+    private func persist() {
+        guard let persistencePath else { return }
+        let snapshot = NewsStateSnapshot(plain: plain, threaded: threaded)
+        guard let data = try? snapshot.encoded() else { return }
+        let url = URL(fileURLWithPath: persistencePath)
+        try? data.write(to: url, options: [.atomic])
     }
 
     // MARK: - Recursive helpers (pure, value-type)

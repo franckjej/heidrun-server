@@ -30,6 +30,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
     public var logLevel: String?
     public var dbPath: String?
     public var filesRoot: String?
+    public var newsStatePath: String?
     public var agreement: String?
     public var bootstrapAdmin: BootstrapAdminFile?
 
@@ -56,6 +57,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
         logLevel: String? = nil,
         dbPath: String? = nil,
         filesRoot: String? = nil,
+        newsStatePath: String? = nil,
         agreement: String? = nil,
         bootstrapAdmin: BootstrapAdminFile? = nil
     ) {
@@ -65,6 +67,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
         self.logLevel = logLevel
         self.dbPath = dbPath
         self.filesRoot = filesRoot
+        self.newsStatePath = newsStatePath
         self.agreement = agreement
         self.bootstrapAdmin = bootstrapAdmin
     }
@@ -76,6 +79,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
         case logLevel = "log_level"
         case dbPath = "db_path"
         case filesRoot = "files_root"
+        case newsStatePath = "news_state_path"
         case agreement
         case bootstrapAdmin = "bootstrap_admin"
     }
@@ -121,6 +125,18 @@ public struct ServerConfigurationFile: Codable, Sendable {
         let resolvedAgreement = environment["HEIDRUN_AGREEMENT"] ?? agreement
         let resolvedDBPath = environment["HEIDRUN_DB_PATH"] ?? dbPath
         let resolvedFilesRoot = environment["HEIDRUN_FILES_ROOT"] ?? filesRoot
+        let resolvedNewsStatePath: String? = {
+            if let raw = environment["HEIDRUN_NEWS_PATH"] { return raw }
+            if let explicit = newsStatePath { return explicit }
+            // Derive from the DB path: <stem>.news.json next to the
+            // SQLite file. Keeps related state in one directory and
+            // avoids one more env var operators have to set.
+            guard let dbPath = resolvedDBPath else { return nil }
+            let url = URL(fileURLWithPath: dbPath)
+            return url.deletingPathExtension()
+                .appendingPathExtension("news.json")
+                .path
+        }()
 
         let resolvedAdmin = ServerConfiguration.BootstrapAdmin(
             login: environment["HEIDRUN_ADMIN_LOGIN"]
@@ -141,7 +157,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
             agreement: resolvedAgreement,
             accountStorePath: resolvedDBPath,
             bootstrapAdmin: resolvedAdmin,
-            filesRootPath: resolvedFilesRoot
+            filesRootPath: resolvedFilesRoot,
+            newsStatePath: resolvedNewsStatePath
         )
     }
 }

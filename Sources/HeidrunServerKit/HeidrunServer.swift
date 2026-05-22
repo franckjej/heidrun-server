@@ -25,7 +25,10 @@ public actor HeidrunServer {
         self.configuration = configuration
         self.stringEncoding = stringEncoding
         self.registry = UserRegistry()
-        self.news = NewsTree(seed: configuration.newsSeed ?? NewsTree.Seed())
+        self.news = NewsTree(
+            seed: configuration.newsSeed ?? NewsTree.Seed(),
+            persistencePath: configuration.newsStatePath
+        )
         self.transfers = TransferRegistry()
         self.privateChats = PrivateChatRegistry()
     }

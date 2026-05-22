@@ -37,6 +37,10 @@ public struct ServerConfiguration: Sendable {
     /// ephemeral tempdir (useful for tests). Production deployments
     /// point this at a persistent location.
     public var filesRootPath: String?
+    /// On-disk path for the news state JSON snapshot. `nil` keeps the
+    /// in-memory behaviour (state wipes on restart) — useful for
+    /// tests; production should point this at a persistent file.
+    public var newsStatePath: String?
 
     public init(
         port: UInt16 = 5500,
@@ -48,7 +52,8 @@ public struct ServerConfiguration: Sendable {
         accountStorePath: String? = nil,
         passwordRounds: Int = PasswordHash.defaultRounds,
         bootstrapAdmin: BootstrapAdmin? = nil,
-        filesRootPath: String? = nil
+        filesRootPath: String? = nil,
+        newsStatePath: String? = nil
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -60,5 +65,6 @@ public struct ServerConfiguration: Sendable {
         self.passwordRounds = passwordRounds
         self.bootstrapAdmin = bootstrapAdmin
         self.filesRootPath = filesRootPath
+        self.newsStatePath = newsStatePath
     }
 }
