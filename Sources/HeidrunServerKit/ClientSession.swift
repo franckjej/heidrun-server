@@ -174,6 +174,13 @@ public actor ClientSession {
     /// `false` to break out of the read loop (e.g. on a client-initiated
     /// disconnect transaction).
     private func dispatch(header: PacketHeader, fields: [PacketField]) async -> Bool {
+        serverLogger.debug("dispatch", metadata: [
+            "transID": "\(header.transactionID)",
+            "taskNumber": "\(header.taskNumber)",
+            "socketID": "\(socketID)",
+            "nickname": "\(nickname)",
+            "fieldCount": "\(fields.count)"
+        ])
         switch header.transactionID {
         case 107:
             await handleLogin(header: header, fields: fields)

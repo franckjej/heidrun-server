@@ -73,11 +73,18 @@ public actor UserRegistry {
     /// Send `packet` to every live session. `excluding` is the
     /// originator's `socketID`; pass `nil` to deliver to everyone.
     public func broadcast(_ packet: Data, excluding originator: UInt16? = nil) async {
+        var delivered = 0
         for (socket, weakSession) in sessions {
             if let excluded = originator, excluded == socket { continue }
             guard let session = weakSession.value else { continue }
             await session.send(packet)
+            delivered += 1
         }
+        serverLogger.debug("broadcast", metadata: [
+            "delivered": "\(delivered)",
+            "excluding": originator.map { "\($0)" } ?? "none",
+            "bytes": "\(packet.count)"
+        ])
     }
 
     private final class WeakSession: @unchecked Sendable {
