@@ -165,7 +165,8 @@ public actor ClientSession {
             await registry.broadcast(PacketEncoder.userLeftPush(socketID: leftSocket))
             serverLogger.info("user disconnected", metadata: [
                 "socketID": "\(leftSocket)",
-                "nickname": "\(nickname)"
+                "nickname": "\(nickname)",
+                "remoteHost": "\(remoteHost ?? "—")"
             ])
         }
     }
@@ -179,6 +180,7 @@ public actor ClientSession {
             "taskNumber": "\(header.taskNumber)",
             "socketID": "\(socketID)",
             "nickname": "\(nickname)",
+            "remoteHost": "\(remoteHost ?? "—")",
             "fieldCount": "\(fields.count)"
         ])
         switch header.transactionID {
@@ -346,7 +348,8 @@ public actor ClientSession {
         serverLogger.info("user logged in", metadata: [
             "socketID": "\(assigned)",
             "nickname": "\(nick)",
-            "login": "\(login.isEmpty ? "guest" : login)"
+            "login": "\(login.isEmpty ? "guest" : login)",
+            "remoteHost": "\(remoteHost ?? "—")"
         ])
 
         let reply = PacketEncoder.loginReply(
