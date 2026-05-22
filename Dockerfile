@@ -58,8 +58,12 @@ RUN apt-get update \
  && apt-get install -y --no-install-recommends libsqlite3-0 \
  && rm -rf /var/lib/apt/lists/*
 
-# A non-root account owns the state directories.
+# A non-root account owns the state directories. /var/lib/heidrun
+# itself must be heidrun-owned so a fresh named volume mounted there
+# inherits writable permissions for the unprivileged user — otherwise
+# GRDB can't create heidrun.sqlite.
 RUN useradd --system --home-dir /var/lib/heidrun --shell /usr/sbin/nologin heidrun \
+ && install -d -o heidrun -g heidrun /var/lib/heidrun \
  && install -d -o heidrun -g heidrun /var/lib/heidrun/files \
  && install -d -o heidrun -g heidrun /etc/heidrun-server
 
