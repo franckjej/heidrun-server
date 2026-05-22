@@ -5,8 +5,8 @@
 # HEIDRUN_FILES_ROOT, HEIDRUN_ADMIN_LOGIN, HEIDRUN_ADMIN_PASSWORD,
 # HEIDRUN_ADMIN_NICKNAME, HEIDRUN_SERVER_NAME, HEIDRUN_AGREEMENT,
 # HEIDRUN_LOG_LEVEL, HEIDRUN_TRACKERS, HEIDRUN_TRACKER_DESCRIPTION,
-# HEIDRUN_TLS_PORT, HEIDRUN_TLS_CERTIFICATE, HEIDRUN_TLS_PRIVATE_KEY)
-# override whatever is set here.
+# HEIDRUN_TLS_PORT, HEIDRUN_TLS_CERTIFICATE, HEIDRUN_TLS_PRIVATE_KEY,
+# HEIDRUN_BANNER_PATH, HEIDRUN_BANNER_KIND) override whatever is set here.
 #
 # Every key is optional; missing keys fall back to built-in defaults.
 
@@ -78,3 +78,16 @@ nickname = "Admin"
 # tls_port = 5502
 # tls_certificate = "/etc/heidrun-server/tls/fullchain.pem"
 # tls_private_key = "/etc/heidrun-server/tls/privkey.pem"
+
+# Server banner image (transID 212). Loaded once at startup; updating
+# the file needs a restart. Path must be readable by the heidrun
+# user — chown it the same way you do for the TLS cert. Recommended
+# size: ~468×60 pixels (classic-era Hotline standard); larger images
+# scale down to an 80pt max height in the Heidrun client.
+#
+# banner_kind is the format hint sent in the 212 reply's bannerType
+# field (152). One of: jpeg, gif, bmp, pict, url. JPEG is the
+# realistic default. URL-mode treats the file's contents as a UTF-8
+# link the client fetches itself.
+# banner_path = "/etc/heidrun-server/banner.jpg"
+# banner_kind = "jpeg"

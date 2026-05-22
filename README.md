@@ -118,6 +118,8 @@ built-in defaults.**
 | `HEIDRUN_TLS_PORT` | _(unset)_ | Sibling TLS control port. Transfer TLS is `tls_port + 1`. Unset / 0 disables TLS entirely |
 | `HEIDRUN_TLS_CERTIFICATE` | _(unset)_ | Path to PEM-encoded TLS certificate chain |
 | `HEIDRUN_TLS_PRIVATE_KEY` | _(unset)_ | Path to PEM-encoded TLS private key |
+| `HEIDRUN_BANNER_PATH` | _(unset)_ | Image file the server delivers via the 212 `downloadBanner` transaction. Loaded into memory at startup; unset / empty disables the banner |
+| `HEIDRUN_BANNER_KIND` | `jpeg` | Format hint sent in the 212 reply (field 152). One of `jpeg`, `gif`, `bmp`, `pict`, `url` |
 | `HEIDRUN_LOG_LEVEL` | `info` | swift-log level: `trace` / `debug` / `info` / `notice` / `warning` / `error` / `critical` |
 
 ### TOML config file
@@ -349,6 +351,63 @@ file deletes drop the row; uploads persist the FILP envelope's
 type/creator. Custom per-file icons are not yet persisted — that's
 the remaining v1.5 item in this area.
 
+### Server banner
+
+The Hotline `downloadBanner` transaction (transID 212) lets the
+server push a logo / splash image to connected clients. Heidrun
+clients display it as a strip at the top of the host workspace
+sidebar; other modern clients (mobius, mierau's hotline) show it on
+the connection-info screen.
+
+**1. Place the image somewhere readable by the heidrun user.** Same
+constraint as the TLS cert — the unprivileged process inside the
+container can't reach files under `0700 root:root` parents. The
+cleanest path on a Docker deploy is `/etc/heidrun-server/banner.jpg`,
+mounted alongside the TLS cert directory:
+
+```bash
+HEIDRUN_UID=$(docker exec heidrun-server id -u heidrun)
+HEIDRUN_GID=$(docker exec heidrun-server id -g heidrun)
+sudo install -d -o "$HEIDRUN_UID" -g "$HEIDRUN_GID" /etc/heidrun-server
+sudo install -m 0644 -o "$HEIDRUN_UID" -g "$HEIDRUN_GID" \
+    /path/to/banner.jpg /etc/heidrun-server/banner.jpg
+```
+
+**2. Configure compose** (uncomment the block already in
+`docker-compose.yml`):
+
+```yaml
+environment:
+  HEIDRUN_BANNER_PATH: "/etc/heidrun-server/banner.jpg"
+  HEIDRUN_BANNER_KIND: "jpeg"
+```
+
+`HEIDRUN_BANNER_KIND` is one of `jpeg` / `gif` / `bmp` / `pict` /
+`url`. JPEG is the realistic default for new deployments — every
+modern client decodes it via system image APIs (`NSImage`,
+`UIImage`, etc.). `url` mode treats the file's contents as a UTF-8
+link the client fetches itself (Heidrun's macOS client skips URL-
+mode banners in v1).
+
+**3. Restart the container.** Bytes are loaded once at startup and
+cached in memory — updating the image needs a `docker compose
+restart heidrun` (same workflow as the TLS cert).
+
+**Operational notes:**
+
+- Recommended size: ~468×60 pixels, the de-facto standard from the
+  classic Hotline era. Heidrun renders the bytes at native aspect
+  with an 80pt max height.
+- A missing / unreadable file logs a warning at startup and disables
+  the banner — 212 requests then reply with an error, which the
+  client maps to "no banner" rather than treating as a failure. A
+  half-configured deploy can't accidentally serve a stale or empty
+  banner.
+- The bytes ride the same HTXF side-channel as file downloads (port
+  + 1, or TLS sibling + 1 when TLS is on), with a banner-flavoured
+  preamble (`type=2`) so the dispatcher can distinguish it from a
+  regular file stream.
+
 ## Tested deployment images
 
 | Image | Status |
@@ -371,6 +430,7 @@ The following are deferred to v1.5:
 
 - Persistent file icons (HFS type/creator + comments now persist; icon
   blobs are still deferred)
-- Server banner image
 - Admin CLI tool (`heidrun-server-admin`)
 - launchd / systemd integration tests
+- Self-signed-cert opt-in on the client (TLS today requires a
+  publicly-trusted CA chain on the server)
