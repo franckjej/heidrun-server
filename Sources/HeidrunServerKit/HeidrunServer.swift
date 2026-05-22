@@ -196,6 +196,13 @@ public actor HeidrunServer {
         configuration: ServerConfiguration,
         stringEncoding: String.Encoding
     ) async {
+        let remoteHost: String? = {
+            guard let address = channelBox.value.remoteAddress else { return nil }
+            if let ip = address.ipAddress, let port = address.port {
+                return "\(ip):\(port)"
+            }
+            return address.ipAddress ?? "\(address)"
+        }()
         let session = ClientSession(
             registry: registry,
             news: news,
@@ -204,6 +211,7 @@ public actor HeidrunServer {
             transfers: transfers,
             configuration: configuration,
             stringEncoding: stringEncoding,
+            remoteHost: remoteHost,
             writer: { packet in
                 let outChannel = channelBox.value
                 var buffer = outChannel.allocator.buffer(capacity: packet.count)

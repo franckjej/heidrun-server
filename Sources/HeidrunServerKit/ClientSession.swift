@@ -23,6 +23,16 @@ public actor ClientSession {
     /// Account row that authenticated the current session, or `nil`
     /// for guest connections (empty login). Used by privilege checks.
     var authenticatedAccount: Account?
+    /// Best-effort "host:port" for the remote peer, captured at
+    /// connection time. Surfaced in the `getClientInfoText` (303)
+    /// profile rendering.
+    var remoteHost: String?
+    /// Client-version (Hotline `versNum`) sent in the 107 login. `nil`
+    /// before login.
+    var clientVersion: UInt16?
+    /// Wall-clock timestamp of the successful login. `nil` while still
+    /// in handshake / pre-auth.
+    var loginAt: Date?
 
     public init(
         registry: UserRegistry,
@@ -32,6 +42,7 @@ public actor ClientSession {
         transfers: TransferRegistry,
         configuration: ServerConfiguration,
         stringEncoding: String.Encoding,
+        remoteHost: String? = nil,
         writer: @escaping @Sendable (Data) async throws -> Void,
         closer: @escaping @Sendable () async -> Void
     ) {
@@ -42,6 +53,7 @@ public actor ClientSession {
         self.transfers = transfers
         self.configuration = configuration
         self.stringEncoding = stringEncoding
+        self.remoteHost = remoteHost
         self.writer = writer
         self.closer = closer
     }
@@ -53,11 +65,30 @@ public actor ClientSession {
         try? await writer(packet)
     }
 
-    /// Login of the account that authenticated this session, or `nil`
-    /// for guests. Used by the `getClientInfoText` (303) handler in
-    /// other sessions when assembling user-info replies.
-    public func accountLogin() -> String? {
-        authenticatedAccount?.login
+    /// Snapshot of everything `getClientInfoText` (303) needs about a
+    /// session: identity bits the registry already has (nickname/icon/
+    /// socket) plus per-session state only the actor knows (login,
+    /// remote host, client version, login timestamp).
+    public struct InfoSnapshot: Sendable {
+        public let nickname: String
+        public let icon: UInt16
+        public let socketID: UInt16
+        public let accountLogin: String?
+        public let remoteHost: String?
+        public let clientVersion: UInt16?
+        public let loginAt: Date?
+    }
+
+    public func infoSnapshot() -> InfoSnapshot {
+        InfoSnapshot(
+            nickname: nickname,
+            icon: icon,
+            socketID: socketID,
+            accountLogin: authenticatedAccount?.login,
+            remoteHost: remoteHost,
+            clientVersion: clientVersion,
+            loginAt: loginAt
+        )
     }
 
     /// Drop the underlying TCP connection. The session's `run` loop
@@ -222,6 +253,8 @@ public actor ClientSession {
         let iconValue = fields.uint16(.icon) ?? 0
         let login = Self.obfuscatedString(.login, from: fields, encoding: stringEncoding) ?? ""
         let password = Self.obfuscatedString(.password, from: fields, encoding: stringEncoding) ?? ""
+        self.clientVersion = fields.uint16(.clientVersion)
+        self.loginAt = Date()
 
         // Authenticate when a login was supplied. Empty login = guest.
         // A non-empty login that doesn't match an account, or a wrong
@@ -300,9 +333,9 @@ public actor ClientSession {
     }
 
     /// Handle `getClientInfoText` (303): look up the addressed user
-    /// and reply with the standard envelope (nickname/icon/status/login
-    /// + a human-readable info text). Targets that aren't logged in
-    /// produce an error reply.
+    /// and reply with the standard envelope plus a column-aligned
+    /// "profile" info text — the format mature Hotline servers send,
+    /// matching what `HeidrunTestServer` renders.
     private func handleGetClientInfo(header: PacketHeader, fields: [PacketField]) async {
         let target = fields.uint16(.socket) ?? 0
         let members = await registry.snapshot()
@@ -314,21 +347,61 @@ public actor ClientSession {
             return
         }
         let targetSession = await registry.lookup(socketID: target)
-        let login = await targetSession?.accountLogin()
-        let infoText = """
-        Name: \(member.nickname)
-        Account: \(login ?? "(guest)")
-        """
+        let snapshot = await targetSession?.infoSnapshot()
+        let infoText = Self.renderUserInfoProfile(member: member, snapshot: snapshot)
+        let login = snapshot?.accountLogin ?? ""
         try? await writer(PacketEncoder.userInfoReply(
             taskNumber: header.taskNumber,
             socket: member.socketID,
             nickname: member.nickname,
             icon: member.icon,
             status: member.status,
-            login: login ?? "",
+            login: login,
             infoText: infoText,
             encoding: stringEncoding
         ))
+    }
+
+    /// Column-aligned profile dump for the `getClientInfoText` reply —
+    /// one row per field, `\r` line breaks (Hotline's wire newline),
+    /// padded so colons line up.
+    static func renderUserInfoProfile(
+        member: UserRegistry.Member,
+        snapshot: InfoSnapshot?
+    ) -> String {
+        let labelWidth = "login tm".count
+        func row(_ label: String, _ value: String) -> String {
+            let padded = String(repeating: " ", count: max(0, labelWidth - label.count)) + label
+            return "\(padded): \(value)"
+        }
+
+        let host    = snapshot?.remoteHost ?? "—"
+        let login   = snapshot?.accountLogin ?? "—"
+        let version = snapshot?.clientVersion.map { "\($0) compatible" } ?? "—"
+        let loginTm = snapshot?.loginAt.map(Self.formatLoginTime) ?? "—"
+        let status  = UserStatus(rawValue: member.status)
+
+        let lines: [String] = [
+            row("name", member.nickname),
+            row("login", login),
+            row("host", host),
+            row("version", version),
+            row("uid", "\(member.socketID)"),
+            row("color", "\(status.color)"),
+            row("icon", "\(member.icon)"),
+            row("login tm", loginTm),
+            "--------------------------------",
+            " - Downloads -",
+            " - Uploads -"
+        ]
+        return lines.joined(separator: "\r")
+    }
+
+    private static func formatLoginTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "h:mm:ssa zzz MMM d"
+        return formatter.string(from: date)
     }
 
     private func handleChat(header: PacketHeader, fields: [PacketField]) async {
