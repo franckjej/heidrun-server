@@ -33,6 +33,12 @@ public struct ServerConfigurationFile: Codable, Sendable {
     public var newsStatePath: String?
     public var agreement: String?
     public var bootstrapAdmin: BootstrapAdminFile?
+    /// Mobius-style tracker endpoints, each `host[:port][:password]`.
+    /// Empty / missing disables tracker registration.
+    public var trackers: [String]?
+    /// Free-text description rendered in tracker listings. Falls back
+    /// to `serverName` if missing.
+    public var trackerDescription: String?
 
     public struct BootstrapAdminFile: Codable, Sendable {
         public var login: String?
@@ -59,7 +65,9 @@ public struct ServerConfigurationFile: Codable, Sendable {
         filesRoot: String? = nil,
         newsStatePath: String? = nil,
         agreement: String? = nil,
-        bootstrapAdmin: BootstrapAdminFile? = nil
+        bootstrapAdmin: BootstrapAdminFile? = nil,
+        trackers: [String]? = nil,
+        trackerDescription: String? = nil
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -70,6 +78,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
         self.newsStatePath = newsStatePath
         self.agreement = agreement
         self.bootstrapAdmin = bootstrapAdmin
+        self.trackers = trackers
+        self.trackerDescription = trackerDescription
     }
 
     enum CodingKeys: String, CodingKey {
@@ -82,6 +92,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
         case newsStatePath = "news_state_path"
         case agreement
         case bootstrapAdmin = "bootstrap_admin"
+        case trackers
+        case trackerDescription = "tracker_description"
     }
 
     public enum LoadError: Swift.Error, Equatable {
@@ -150,6 +162,20 @@ public struct ServerConfigurationFile: Codable, Sendable {
                 ?? "Admin"
         )
 
+        // Trackers — env var (comma-separated) wins over file. Each raw
+        // entry is parsed via TrackerHost.parse; malformed entries drop
+        // silently rather than failing the whole startup.
+        let rawTrackers: [String] = {
+            if let raw = environment["HEIDRUN_TRACKERS"] {
+                return raw.split(separator: ",", omittingEmptySubsequences: true)
+                    .map(String.init)
+            }
+            return trackers ?? []
+        }()
+        let resolvedTrackers = rawTrackers.compactMap(TrackerHost.parse)
+        let resolvedTrackerDescription = environment["HEIDRUN_TRACKER_DESCRIPTION"]
+            ?? trackerDescription
+
         return ServerConfiguration(
             port: resolvedPort,
             bindHost: resolvedBindHost,
@@ -158,7 +184,9 @@ public struct ServerConfigurationFile: Codable, Sendable {
             accountStorePath: resolvedDBPath,
             bootstrapAdmin: resolvedAdmin,
             filesRootPath: resolvedFilesRoot,
-            newsStatePath: resolvedNewsStatePath
+            newsStatePath: resolvedNewsStatePath,
+            trackers: resolvedTrackers,
+            trackerDescription: resolvedTrackerDescription
         )
     }
 }

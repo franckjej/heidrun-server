@@ -113,6 +113,8 @@ built-in defaults.**
 | `HEIDRUN_ADMIN_LOGIN` | `admin` | Login for the bootstrap admin (only seeded on a fresh DB) |
 | `HEIDRUN_ADMIN_PASSWORD` | `admin` | Password for the bootstrap admin |
 | `HEIDRUN_ADMIN_NICKNAME` | `Admin` | Nickname for the bootstrap admin |
+| `HEIDRUN_TRACKERS` | _(empty)_ | Comma-separated `host[:port][:password]` list of trackers to register with (mobius-compatible). Empty disables tracker registration |
+| `HEIDRUN_TRACKER_DESCRIPTION` | _(server name)_ | Free-text description shown in tracker listings |
 | `HEIDRUN_LOG_LEVEL` | `info` | swift-log level: `trace` / `debug` / `info` / `notice` / `warning` / `error` / `critical` |
 
 ### TOML config file
@@ -189,11 +191,8 @@ comments live in memory and wipe on restart. This is on the v1.5 list.
 The following are deferred to v1.5:
 
 - TLS-wrapped variant on a sibling port (currently cleartext only)
-- UDP tracker beacon registration
 - Persistent file metadata (HFS type/creator, comments, icons in
   SQLite)
-- Folder bulk transfers (transID 210 / 213) — single-file workflows
-  are fully supported; folder up/down via the client UI will fail
 - Server banner image
 - Admin CLI tool (`heidrun-server-admin`)
 - launchd / systemd integration tests

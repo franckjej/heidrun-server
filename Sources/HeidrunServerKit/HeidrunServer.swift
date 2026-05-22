@@ -17,6 +17,7 @@ public actor HeidrunServer {
     private var group: (any EventLoopGroup)?
     private var controlChannel: (any Channel)?
     private var transferChannel: (any Channel)?
+    private var trackerAnnouncer: TrackerAnnouncer?
 
     public init(
         configuration: ServerConfiguration,
@@ -131,11 +132,39 @@ public actor HeidrunServer {
         )
         self.controlChannel = control
         self.transferChannel = transfer
-        return UInt16(control.localAddress?.port ?? 0)
+
+        let boundPort = UInt16(control.localAddress?.port ?? 0)
+
+        // Kick off tracker registration if the operator configured any.
+        // The announcer captures a weak read of the registry through the
+        // closure so it doesn't extend session lifetimes.
+        if !configuration.trackers.isEmpty {
+            let registrySnapshot = self.registry
+            let announceDescription = configuration.trackerDescription ?? configuration.serverName
+            let announcer = TrackerAnnouncer(
+                trackers: configuration.trackers,
+                serverName: configuration.serverName,
+                announceDescription: announceDescription,
+                advertisedPort: boundPort,
+                userCountProvider: {
+                    let live = await registrySnapshot.snapshot()
+                    return UInt16(clamping: live.count)
+                },
+                send: TrackerAnnouncer.makeNIOSender(group: eventLoopGroup)
+            )
+            self.trackerAnnouncer = announcer
+            await announcer.start()
+        }
+
+        return boundPort
     }
 
     public func stop() async {
         serverLogger.info("HeidrunServer stopping")
+        if let trackerAnnouncer {
+            await trackerAnnouncer.stop()
+        }
+        trackerAnnouncer = nil
         try? await transferChannel?.close().get()
         try? await controlChannel?.close().get()
         try? await group?.shutdownGracefully()

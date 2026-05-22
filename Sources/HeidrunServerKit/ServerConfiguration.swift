@@ -41,6 +41,14 @@ public struct ServerConfiguration: Sendable {
     /// in-memory behaviour (state wipes on restart) — useful for
     /// tests; production should point this at a persistent file.
     public var newsStatePath: String?
+    /// Trackers this server should periodically register with. Empty
+    /// list disables tracker registration entirely. See `TrackerHost`
+    /// for the mobius-compatible `host[:port][:password]` shape.
+    public var trackers: [TrackerHost]
+    /// Description shown in tracker listings. Falls back to
+    /// `serverName` when unset so an unconfigured server still gets a
+    /// readable directory entry.
+    public var trackerDescription: String?
 
     public init(
         port: UInt16 = 5500,
@@ -53,7 +61,9 @@ public struct ServerConfiguration: Sendable {
         passwordRounds: Int = PasswordHash.defaultRounds,
         bootstrapAdmin: BootstrapAdmin? = nil,
         filesRootPath: String? = nil,
-        newsStatePath: String? = nil
+        newsStatePath: String? = nil,
+        trackers: [TrackerHost] = [],
+        trackerDescription: String? = nil
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -66,5 +76,7 @@ public struct ServerConfiguration: Sendable {
         self.bootstrapAdmin = bootstrapAdmin
         self.filesRootPath = filesRootPath
         self.newsStatePath = newsStatePath
+        self.trackers = trackers
+        self.trackerDescription = trackerDescription
     }
 }
