@@ -9,7 +9,7 @@ let package = Package(
         .executable(name: "HeidrunServer", targets: ["HeidrunServer"])
     ],
     dependencies: [
-        .package(url: "git@github.com:franckjej/heidrun-protocol.git", from: "1.0.0-rc2"),
+        .package(url: "https://github.com/franckjej/heidrun-protocol.git", from: "1.0.0-rc2"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
         .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.27.0"),
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),

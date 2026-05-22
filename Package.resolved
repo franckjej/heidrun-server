@@ -13,7 +13,7 @@
     {
       "identity" : "heidrun-protocol",
       "kind" : "remoteSourceControl",
-      "location" : "git@github.com:franckjej/heidrun-protocol.git",
+      "location" : "https://github.com/franckjej/heidrun-protocol.git",
       "state" : {
         "revision" : "713f4c19d232a91bd6af62d71dc3cc5561a02b0c",
         "version" : "1.0.0-rc2"

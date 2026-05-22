@@ -1,0 +1,24 @@
+# The Dockerfile only COPYs Package.swift, Package.resolved, Sources,
+# and heidrun-server.example.toml — everything else here is belt-and-
+# suspenders to keep the build context small and reproducible.
+
+.git
+.gitignore
+.github
+
+.build
+.swiftpm
+*.xcodeproj
+*.xcworkspace
+DerivedData
+
+Tests
+deploy
+README.md
+docker-compose.yml
+Dockerfile
+.dockerignore
+
+.DS_Store
+.vscode
+.idea

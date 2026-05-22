@@ -22,7 +22,7 @@ from the same source.
 ### macOS (development)
 
 ```bash
-swift run --package-path Packages/HeidrunServer HeidrunServer
+swift run HeidrunServer
 ```
 
 The server listens on `127.0.0.1:5500` (control) and `127.0.0.1:5501`
@@ -31,8 +31,15 @@ fresh database — **change them immediately for any real deployment**.
 
 ### Docker
 
+The build fetches the private `heidrun-protocol` SPM package from
+GitHub over HTTPS, authenticated with a GitHub token. `gh auth login`
+once, then `gh auth token` emits a token the BuildKit secret mount
+consumes; the token never lands in any image layer.
+
 ```bash
-docker build -t heidrun-server -f Packages/HeidrunServer/Dockerfile .
+DOCKER_BUILDKIT=1 GH_TOKEN="$(gh auth token)" \
+  docker build --secret id=gh_token,env=GH_TOKEN -t heidrun-server .
+
 docker run -d --name heidrun \
   -p 5500:5500 -p 5501:5501 \
   -v heidrun-data:/var/lib/heidrun \
@@ -40,10 +47,11 @@ docker run -d --name heidrun \
   heidrun-server
 ```
 
-Or with `docker-compose`:
+Or with `docker-compose` (compose v2+ honours the build secret stanza):
 
 ```bash
-docker compose -f Packages/HeidrunServer/docker-compose.yml up -d
+DOCKER_BUILDKIT=1 GH_TOKEN="$(gh auth token)" \
+  docker compose up -d --build
 ```
 
 ### Linux (systemd)
@@ -53,10 +61,10 @@ See `deploy/systemd/heidrun-server.service`. Install with:
 ```bash
 install -d /var/lib/heidrun/{files} /etc/heidrun-server
 install -m 0755 ./HeidrunServer /usr/local/bin/heidrun-server
-install -m 0644 Packages/HeidrunServer/heidrun-server.example.toml \
+install -m 0644 heidrun-server.example.toml \
                 /etc/heidrun-server/config.toml
 $EDITOR /etc/heidrun-server/config.toml           # set a real admin password
-install -m 0644 Packages/HeidrunServer/deploy/systemd/heidrun-server.service \
+install -m 0644 deploy/systemd/heidrun-server.service \
                 /etc/systemd/system/
 useradd --system --home-dir /var/lib/heidrun --shell /usr/sbin/nologin heidrun
 chown -R heidrun:heidrun /var/lib/heidrun
@@ -71,11 +79,11 @@ See `deploy/launchd/org.tastybytes.heidrun-server.plist`. Install with:
 ```bash
 sudo install -d /usr/local/var/heidrun/files /usr/local/etc/heidrun-server
 sudo install -m 0755 ./HeidrunServer /usr/local/bin/heidrun-server
-sudo install -m 0644 Packages/HeidrunServer/heidrun-server.example.toml \
+sudo install -m 0644 heidrun-server.example.toml \
                      /usr/local/etc/heidrun-server/config.toml
 sudo $EDITOR /usr/local/etc/heidrun-server/config.toml
 sudo install -m 0644 \
-  Packages/HeidrunServer/deploy/launchd/org.tastybytes.heidrun-server.plist \
+  deploy/launchd/org.tastybytes.heidrun-server.plist \
   /Library/LaunchDaemons/
 sudo launchctl bootstrap system /Library/LaunchDaemons/org.tastybytes.heidrun-server.plist
 ```
@@ -89,10 +97,10 @@ the official `swift:6.2-jammy` (Ubuntu 22.04) and `swift:6.2-noble`
 
 ```bash
 # macOS / Linux
-swift build --package-path Packages/HeidrunServer --configuration release
+swift build --configuration release
 
 # Resulting binary
-ls Packages/HeidrunServer/.build/release/HeidrunServer
+ls .build/release/HeidrunServer
 ```
 
 ## Configuration

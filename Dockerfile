@@ -1,7 +1,15 @@
 # Multi-stage build for HeidrunServer.
 #
-# Build from the repo root:
-#   docker build -t heidrun-server -f Packages/HeidrunServer/Dockerfile .
+# Build from this repo's root. The build needs a GitHub token with read
+# access to the private `heidrun-protocol` package — `gh auth token`
+# emits one if you've run `gh auth login`:
+#
+#   DOCKER_BUILDKIT=1 GH_TOKEN="$(gh auth token)" \
+#     docker build --secret id=gh_token,env=GH_TOKEN -t heidrun-server .
+#
+# The token is passed as a BuildKit secret, exposed only inside the
+# `swift package resolve` step via $GIT_CONFIG_*, and never written to
+# any file or image layer.
 #
 # Run:
 #   docker run -d --name heidrun \
@@ -14,38 +22,55 @@
 # root). The default config under /etc/heidrun-server/config.toml is
 # the bundled `heidrun-server.example.toml` — env vars override it.
 
+# syntax=docker/dockerfile:1.6
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Build stage
 # ──────────────────────────────────────────────────────────────────────────────
 FROM swift:6.2-jammy AS build
 
-# GRDB links system SQLite; the base image doesn't ship the dev headers.
+# GRDB links system SQLite; the base image doesn't ship the dev
+# headers. `git` + `ca-certificates` let SPM clone HTTPS package
+# dependencies (including the private heidrun-protocol).
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libsqlite3-dev \
+ && apt-get install -y --no-install-recommends \
+        libsqlite3-dev \
+        git \
+        ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
 
-# Copy only the SPM packages HeidrunServer needs to keep the layer
-# cache predictable. The macOS-only siblings (HeidrunUI,
-# HeidrunModules, CommonTools, HeidrunIconConverter, HeidrunTestServer,
-# the Xcode app target) are deliberately excluded.
-COPY Packages/HeidrunCore   Packages/HeidrunCore
-COPY Packages/HeidrunServer Packages/HeidrunServer
+# Step 1: resolve dependencies from Package.swift + Package.resolved
+# alone. This layer is cached as long as those two files don't
+# change, so source edits don't re-fetch the whole SPM graph.
+#
+# The token reaches `swift package resolve` via GIT_CONFIG_COUNT (git
+# 2.31+) — a per-process git config that lives only in this shell's
+# environment and never touches a config file. Combined with the
+# BuildKit secret mount, the token has no path into any image layer:
+# the secret file is unmounted when the RUN exits, and the env vars
+# die with the shell.
+COPY Package.swift Package.resolved ./
+RUN --mount=type=secret,id=gh_token,required=true \
+    --mount=type=cache,target=/root/.cache/org.swift.swiftpm \
+    GH_TOKEN="$(cat /run/secrets/gh_token)" \
+    GIT_CONFIG_COUNT=1 \
+    GIT_CONFIG_KEY_0="url.https://x-access-token:$(cat /run/secrets/gh_token)@github.com/.insteadOf" \
+    GIT_CONFIG_VALUE_0="https://github.com/" \
+    swift package resolve
 
-# `--static-swift-stdlib` is intentionally omitted: the runtime image
-# already ships the Swift runtime, so static-linking just doubles link
-# time. The `.build` cache mount keeps SPM artefacts between builds —
-# the install step must live in the same RUN so it can read the cached
-# output before the mount detaches.
+# Step 2: bring in the sources and build. No secret needed here — the
+# resolve step already populated the SPM checkout cache, so the build
+# step only reads from disk.
+COPY Sources ./Sources
 RUN --mount=type=cache,target=/root/.cache/org.swift.swiftpm \
-    --mount=type=cache,target=/src/Packages/HeidrunServer/.build \
+    --mount=type=cache,target=/src/.build \
     swift build \
-      --package-path Packages/HeidrunServer \
       --configuration release \
       --product HeidrunServer \
  && install -m 0755 \
-      Packages/HeidrunServer/.build/release/HeidrunServer \
+      .build/release/HeidrunServer \
       /usr/local/bin/heidrun-server
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -68,7 +93,7 @@ RUN useradd --system --home-dir /var/lib/heidrun --shell /usr/sbin/nologin heidr
  && install -d -o heidrun -g heidrun /etc/heidrun-server
 
 COPY --from=build /usr/local/bin/heidrun-server /usr/local/bin/heidrun-server
-COPY Packages/HeidrunServer/heidrun-server.example.toml /etc/heidrun-server/config.toml
+COPY heidrun-server.example.toml /etc/heidrun-server/config.toml
 
 USER heidrun
 WORKDIR /var/lib/heidrun
