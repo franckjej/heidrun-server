@@ -33,14 +33,18 @@ WORKDIR /src
 COPY Packages/HeidrunCore   Packages/HeidrunCore
 COPY Packages/HeidrunServer Packages/HeidrunServer
 
-RUN swift build \
+# `--static-swift-stdlib` is intentionally omitted: the runtime image
+# already ships the Swift runtime, so static-linking just doubles link
+# time. The `.build` cache mount keeps SPM artefacts between builds —
+# the install step must live in the same RUN so it can read the cached
+# output before the mount detaches.
+RUN --mount=type=cache,target=/root/.cache/org.swift.swiftpm \
+    --mount=type=cache,target=/src/Packages/HeidrunServer/.build \
+    swift build \
       --package-path Packages/HeidrunServer \
       --configuration release \
       --product HeidrunServer \
-      --static-swift-stdlib
-
-# Locate the binary so the runtime stage has a stable path.
-RUN install -m 0755 \
+ && install -m 0755 \
       Packages/HeidrunServer/.build/release/HeidrunServer \
       /usr/local/bin/heidrun-server
 
