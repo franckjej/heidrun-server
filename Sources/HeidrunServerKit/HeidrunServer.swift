@@ -264,6 +264,25 @@ public actor HeidrunServer {
             | UInt32(preamble[base + 11])
         guard let pending = await transfers.claim(transferID: transferID) else { return }
         switch pending {
+        case let .folderDownload(items):
+            await ServerFolderDownload.drive(
+                stream: &stream,
+                outChannel: channelBox.value,
+                items: items,
+                encoding: String.Encoding.macOSRoman
+            )
+            return
+        case let .folderUpload(path, name, itemCount):
+            await ServerFolderUpload.drain(
+                stream: &stream,
+                outChannel: channelBox.value,
+                files: files,
+                path: path,
+                name: name,
+                itemCount: itemCount,
+                encoding: String.Encoding.macOSRoman
+            )
+            return
         case let .download(bytes, offset):
             let outChannel = channelBox.value
             let start = min(Int(offset), bytes.count)

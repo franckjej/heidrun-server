@@ -13,6 +13,13 @@ public actor TransferRegistry {
     public enum Pending: Sendable {
         case download(bytes: Data, offset: UInt32)
         case upload(path: [String], name: String, declaredSize: UInt32, resume: Bool)
+        /// Server-driven folder download — the enumerated items live
+        /// in-memory the same way single-file downloads do (read once
+        /// at handler time, replayed on the side channel).
+        case folderDownload(items: [FileVault.FolderItem])
+        /// Client-driven folder upload — server drains items into the
+        /// vault under `(path, name)` for `itemCount` iterations.
+        case folderUpload(path: [String], name: String, itemCount: UInt16)
     }
 
     private var pending: [UInt32: Pending] = [:]
@@ -47,6 +54,31 @@ public actor TransferRegistry {
             declaredSize: declaredSize,
             resume: resume
         )
+        return assigned
+    }
+
+    /// Register a server-driven folder download. The fully-enumerated
+    /// item list rides along so the HTXF handler doesn't have to walk
+    /// the filesystem again.
+    public func registerFolderDownload(items: [FileVault.FolderItem]) -> UInt32 {
+        let assigned = nextID
+        nextID &+= 1
+        if nextID == 0 { nextID = 1 }
+        pending[assigned] = .folderDownload(items: items)
+        return assigned
+    }
+
+    /// Register a client-driven folder upload. `itemCount` tells the
+    /// HTXF handler how many `(header, payload)` cycles to drain.
+    public func registerFolderUpload(
+        path: [String],
+        name: String,
+        itemCount: UInt16
+    ) -> UInt32 {
+        let assigned = nextID
+        nextID &+= 1
+        if nextID == 0 { nextID = 1 }
+        pending[assigned] = .folderUpload(path: path, name: name, itemCount: itemCount)
         return assigned
     }
 

@@ -267,6 +267,12 @@ public actor ClientSession {
         case 209:
             await handleMakeAlias(header: header, fields: fields)
             return true
+        case 210:
+            await handleDownloadFolder(header: header, fields: fields)
+            return true
+        case 213:
+            await handleUploadFolder(header: header, fields: fields)
+            return true
         case 304:
             await handleSetClientUserInfo(header: header, fields: fields)
             return true

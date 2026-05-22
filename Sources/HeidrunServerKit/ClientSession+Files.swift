@@ -86,6 +86,68 @@ extension ClientSession {
         ))
     }
 
+    /// Handle `downloadFolder` (210): walk the folder, register a
+    /// pending `.folderDownload` transfer keyed by a fresh transferID,
+    /// and reply with `(.transferID, .transferSize)` so the client can
+    /// open its HTXF connection and consume the framed item stream.
+    func handleDownloadFolder(header: PacketHeader, fields: [PacketField]) async {
+        let path = filePath(from: fields)
+        guard let name = fields.string(.fileName, encoding: stringEncoding) else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: 210
+            ))
+            return
+        }
+        guard let items = await files.enumerate(at: path, name: name) else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: 210
+            ))
+            return
+        }
+        let totalSize = items.reduce(UInt32(0)) { running, item in
+            guard !item.isDirectory else { return running }
+            let nameBytes = (item.relativePath.last ?? "")
+                .data(using: stringEncoding, allowLossyConversion: true) ?? Data()
+            let per = UploadFraming.totalSize(
+                nameLength: nameBytes.count,
+                dataLength: UInt32(item.data.count)
+            )
+            return running &+ per &+ 4    // 4 bytes for the UInt32 itemFileSize prefix
+        }
+        let transferID = await transfers.registerFolderDownload(items: items)
+        try? await writer(PacketEncoder.downloadFileReply(
+            taskNumber: header.taskNumber,
+            transferID: transferID,
+            transferSize: totalSize
+        ))
+    }
+
+    /// Handle `uploadFolder` (213): register a pending
+    /// `.folderUpload`, reply with the transferID so the client can
+    /// open its HTXF connection and start streaming items.
+    func handleUploadFolder(header: PacketHeader, fields: [PacketField]) async {
+        let path = filePath(from: fields)
+        guard let name = fields.string(.fileName, encoding: stringEncoding) else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: 213
+            ))
+            return
+        }
+        let itemCount = fields.uint16(.folderItemCount) ?? 0
+        let transferID = await transfers.registerFolderUpload(
+            path: path,
+            name: name,
+            itemCount: itemCount
+        )
+        try? await writer(PacketEncoder.uploadFileReply(
+            taskNumber: header.taskNumber,
+            transferID: transferID
+        ))
+    }
+
     /// Handle `uploadFile` (203). Mirrors download: register a pending
     /// transfer of kind `.upload`, reply with the assigned transferID.
     /// The client then opens an HTXF connection on port + 1 carrying

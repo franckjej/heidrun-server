@@ -46,6 +46,37 @@ public actor FileVault {
         }
     }
 
+    /// One node yielded by `enumerate(at:name:)`. Directories carry an
+    /// empty `data`; files carry the data-fork bytes ready to frame
+    /// into the folder-download stream.
+    public struct FolderItem: Sendable, Hashable {
+        public var relativePath: [String]
+        public var isDirectory: Bool
+        public var data: Data
+        public var type: HeidrunCore.FourCharCode
+        public var creator: HeidrunCore.FourCharCode
+        public var created: Date
+        public var modified: Date
+
+        public init(
+            relativePath: [String],
+            isDirectory: Bool,
+            data: Data = Data(),
+            type: HeidrunCore.FourCharCode = .file,
+            creator: HeidrunCore.FourCharCode = .unknown,
+            created: Date = .distantPast,
+            modified: Date = .distantPast
+        ) {
+            self.relativePath = relativePath
+            self.isDirectory = isDirectory
+            self.data = data
+            self.type = type
+            self.creator = creator
+            self.created = created
+            self.modified = modified
+        }
+    }
+
     private let rootURL: URL
     private let fileManager: FileManager
     /// In-memory comment store. Keyed by the file's relative path from
@@ -106,6 +137,70 @@ public actor FileVault {
         guard fileManager.fileExists(atPath: fileURL.path, isDirectory: &isDir) else { return nil }
         guard !isDir.boolValue else { return nil }
         return try? Data(contentsOf: fileURL)
+    }
+
+    /// Depth-first walk of the folder at `(path, name)`. Returns a
+    /// flat list of every entry inside the folder; directories appear
+    /// before their children. The folder itself is *not* part of the
+    /// returned list — paths are relative to its root.
+    ///
+    /// Returns `nil` when the start path doesn't exist, isn't a
+    /// directory, or contains a forbidden component.
+    public func enumerate(at path: [String], name: String) -> [FolderItem]? {
+        guard Self.isSafeComponent(name) else { return nil }
+        guard let parent = resolved(path: path) else { return nil }
+        let rootURL = parent.appendingPathComponent(name, isDirectory: true)
+        guard isDirectory(rootURL) else { return nil }
+
+        var collected: [FolderItem] = []
+        Self.walk(url: rootURL, relative: [], into: &collected, fileManager: fileManager)
+        return collected
+    }
+
+    private static func walk(
+        url: URL,
+        relative: [String],
+        into collected: inout [FolderItem],
+        fileManager: FileManager
+    ) {
+        let children: [URL]
+        do {
+            children = try fileManager.contentsOfDirectory(
+                at: url,
+                includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey, .creationDateKey, .contentModificationDateKey],
+                options: [.skipsHiddenFiles]
+            )
+        } catch {
+            return
+        }
+        for child in children.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+            let relPath = relative + [child.lastPathComponent]
+            let attributes = (try? fileManager.attributesOfItem(atPath: child.path)) ?? [:]
+            let created = (attributes[.creationDate] as? Date) ?? .distantPast
+            let modified = (attributes[.modificationDate] as? Date) ?? .distantPast
+            var isDir: ObjCBool = false
+            _ = fileManager.fileExists(atPath: child.path, isDirectory: &isDir)
+            if isDir.boolValue {
+                collected.append(FolderItem(
+                    relativePath: relPath,
+                    isDirectory: true,
+                    created: created,
+                    modified: modified
+                ))
+                walk(url: child, relative: relPath, into: &collected, fileManager: fileManager)
+            } else {
+                let data = (try? Data(contentsOf: child)) ?? Data()
+                collected.append(FolderItem(
+                    relativePath: relPath,
+                    isDirectory: false,
+                    data: data,
+                    type: .file,
+                    creator: .unknown,
+                    created: created,
+                    modified: modified
+                ))
+            }
+        }
     }
 
     /// Snapshot metadata for a single entry at `(path, name)`. Returns
