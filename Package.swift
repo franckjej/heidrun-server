@@ -9,7 +9,7 @@ let package = Package(
         .executable(name: "HeidrunServer", targets: ["HeidrunServer"])
     ],
     dependencies: [
-        .package(path: "../HeidrunCore"),
+        .package(url: "git@github.com:franckjej/heidrun-protocol.git", from: "1.0.0-rc1"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
         .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.27.0"),
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),
@@ -21,7 +21,7 @@ let package = Package(
         .target(
             name: "HeidrunServerKit",
             dependencies: [
-                .product(name: "HeidrunCore", package: "HeidrunCore"),
+                .product(name: "HeidrunCore", package: "heidrun-protocol"),
                 .product(name: "NIOCore", package: "swift-nio"),
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "NIOSSL", package: "swift-nio-ssl"),
@@ -39,7 +39,7 @@ let package = Package(
             name: "HeidrunServerKitTests",
             dependencies: [
                 "HeidrunServerKit",
-                .product(name: "HeidrunCore", package: "HeidrunCore")
+                .product(name: "HeidrunCore", package: "heidrun-protocol")
             ],
             resources: [
                 .copy("TestCerts")

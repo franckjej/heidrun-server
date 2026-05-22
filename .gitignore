@@ -1,0 +1,12 @@
+.build/
+.swiftpm/
+*.xcodeproj
+xcuserdata/
+DerivedData/
+.DS_Store
+.netrc
+
+# Local TLS test certs / Let's Encrypt copies
+/tls/
+*.pem
+!Tests/**/TestCerts/*.pem
