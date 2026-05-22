@@ -1,4 +1,5 @@
 import Foundation
+import HeidrunCore
 
 /// Construction-time config for one `HeidrunServer` instance.
 public struct ServerConfiguration: Sendable {
@@ -60,6 +61,18 @@ public struct ServerConfiguration: Sendable {
     /// PEM-encoded private key matching `tlsCertificatePath`. Required
     /// when `tlsPort` is set.
     public var tlsPrivateKeyPath: String?
+    /// Server-banner image surfaced to clients via the 212
+    /// `downloadBanner` transaction. `nil` disables the banner —
+    /// 212 requests return an error reply, which clients map to
+    /// "no banner configured". Read once at `start()`, cached in
+    /// memory; an operator updating the image needs to restart the
+    /// container (same workflow as the TLS cert).
+    public var bannerPath: String?
+    /// Format hint sent in the 212 reply's `bannerType` field (152).
+    /// Defaults to `.jpeg` since every modern client supports JPEG
+    /// + every banner ever shipped happened to be one. Override for
+    /// GIF / BMP / PICT / URL deployments.
+    public var bannerKind: HeidrunCore.ServerBanner.Kind
 
     public init(
         port: UInt16 = 5500,
@@ -77,7 +90,9 @@ public struct ServerConfiguration: Sendable {
         trackerDescription: String? = nil,
         tlsPort: UInt16? = nil,
         tlsCertificatePath: String? = nil,
-        tlsPrivateKeyPath: String? = nil
+        tlsPrivateKeyPath: String? = nil,
+        bannerPath: String? = nil,
+        bannerKind: HeidrunCore.ServerBanner.Kind = .jpeg
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -95,5 +110,7 @@ public struct ServerConfiguration: Sendable {
         self.tlsPort = tlsPort
         self.tlsCertificatePath = tlsCertificatePath
         self.tlsPrivateKeyPath = tlsPrivateKeyPath
+        self.bannerPath = bannerPath
+        self.bannerKind = bannerKind
     }
 }

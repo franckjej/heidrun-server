@@ -73,6 +73,31 @@ public actor HeidrunServer {
         }
         self.accounts = accountStore
 
+        // Load the server banner once at startup, if configured. Same
+        // workflow as the TLS cert: bytes live in memory; updating
+        // the file requires a restart. A missing path or unreadable
+        // file logs a warning + disables the banner (212 will reply
+        // with an error, which the client surfaces as `nil`).
+        let bannerBytes: Data?
+        if let bannerPath = configuration.bannerPath, !bannerPath.isEmpty {
+            do {
+                bannerBytes = try Data(contentsOf: URL(fileURLWithPath: bannerPath))
+                serverLogger.info("loaded server banner", metadata: [
+                    "path": "\(bannerPath)",
+                    "size": "\(bannerBytes?.count ?? 0)",
+                    "kind": "\(configuration.bannerKind.rawValue)"
+                ])
+            } catch {
+                serverLogger.warning("failed to load banner; 212 requests will fail", metadata: [
+                    "path": "\(bannerPath)",
+                    "error": "\(error)"
+                ])
+                bannerBytes = nil
+            }
+        } else {
+            bannerBytes = nil
+        }
+
         let eventLoopGroup = MultiThreadedEventLoopGroup(numberOfThreads: 1)
         self.group = eventLoopGroup
 
@@ -85,6 +110,7 @@ public actor HeidrunServer {
         let configurationCopy = self.configuration
         let stringEncodingCopy = self.stringEncoding
 
+        let bannerKindCopy = configurationCopy.bannerKind
         let controlBootstrap = Self.makeControlBootstrap(
             on: eventLoopGroup,
             sslContext: nil,
@@ -95,7 +121,9 @@ public actor HeidrunServer {
             transfers: transfersCopy,
             privateChats: privateChatsCopy,
             configuration: configurationCopy,
-            stringEncoding: stringEncodingCopy
+            stringEncoding: stringEncodingCopy,
+            bannerBytes: bannerBytes,
+            bannerKind: bannerKindCopy
         )
 
         let transferBootstrap = Self.makeTransferBootstrap(
@@ -148,7 +176,9 @@ public actor HeidrunServer {
                 transfers: transfersCopy,
                 privateChats: privateChatsCopy,
                 configuration: configurationCopy,
-                stringEncoding: stringEncodingCopy
+                stringEncoding: stringEncodingCopy,
+                bannerBytes: bannerBytes,
+                bannerKind: bannerKindCopy
             )
             let tlsTransferBootstrap = Self.makeTransferBootstrap(
                 on: eventLoopGroup,
@@ -232,7 +262,9 @@ public actor HeidrunServer {
         transfers: TransferRegistry,
         privateChats: PrivateChatRegistry,
         configuration: ServerConfiguration,
-        stringEncoding: String.Encoding
+        stringEncoding: String.Encoding,
+        bannerBytes: Data?,
+        bannerKind: HeidrunCore.ServerBanner.Kind
     ) -> ServerBootstrap {
         ServerBootstrap(group: eventLoopGroup)
             .serverChannelOption(ChannelOptions.backlog, value: 64)
@@ -267,7 +299,9 @@ public actor HeidrunServer {
                                 privateChats: privateChats,
                                 configuration: configuration,
                                 stringEncoding: stringEncoding,
-                                isTLS: isTLS
+                                isTLS: isTLS,
+                                bannerBytes: bannerBytes,
+                                bannerKind: bannerKind
                             )
                         }
                     }
@@ -372,7 +406,9 @@ public actor HeidrunServer {
         privateChats: PrivateChatRegistry,
         configuration: ServerConfiguration,
         stringEncoding: String.Encoding,
-        isTLS: Bool
+        isTLS: Bool,
+        bannerBytes: Data?,
+        bannerKind: HeidrunCore.ServerBanner.Kind
     ) async {
         let remoteHost: String? = {
             guard let address = channelBox.value.remoteAddress else { return nil }
@@ -392,6 +428,8 @@ public actor HeidrunServer {
             stringEncoding: stringEncoding,
             remoteHost: remoteHost,
             isTLS: isTLS,
+            bannerBytes: bannerBytes,
+            bannerKind: bannerKind,
             writer: { packet in
                 let outChannel = channelBox.value
                 var buffer = outChannel.allocator.buffer(capacity: packet.count)
@@ -438,6 +476,18 @@ public actor HeidrunServer {
             | UInt32(preamble[base + 11])
         guard let pending = await transfers.claim(transferID: transferID) else { return }
         switch pending {
+        case let .banner(bytes):
+            let outChannel = channelBox.value
+            let chunkSize = 16 * 1024
+            var current = bytes.startIndex
+            while current < bytes.endIndex {
+                let end = bytes.index(current, offsetBy: chunkSize, limitedBy: bytes.endIndex) ?? bytes.endIndex
+                var buffer = outChannel.allocator.buffer(capacity: chunkSize)
+                buffer.writeBytes(bytes[current..<end])
+                try? await outChannel.writeAndFlush(buffer).get()
+                current = end
+            }
+            return
         case let .folderDownload(items):
             await ServerFolderDownload.drive(
                 stream: &stream,

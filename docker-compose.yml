@@ -186,6 +186,25 @@ services:
       # HEIDRUN_TLS_PRIVATE_KEY: "/etc/heidrun-server/tls/privkey.pem"
 
       # ---------------------------------------------------------------
+      # SERVER BANNER (transID 212)
+      # ---------------------------------------------------------------
+      #
+      # Optional image surfaced to clients when they request the
+      # server banner (typically once per login). Loaded into memory
+      # at startup; updating the file needs a container restart
+      # (same workflow as the TLS cert). The file must be readable
+      # by the heidrun user — bind-mount the directory + chown its
+      # contents the same way you do for TLS certs.
+      #
+      # HEIDRUN_BANNER_KIND is the format hint sent in the 212
+      # reply's bannerType field (152). One of: jpeg, gif, bmp,
+      # pict, url. JPEG is the realistic default — clients decode
+      # the bytes directly. URL mode treats the file's contents as
+      # a UTF-8 link the client fetches itself.
+      # HEIDRUN_BANNER_PATH: "/etc/heidrun-server/banner.jpg"
+      # HEIDRUN_BANNER_KIND: "jpeg"
+
+      # ---------------------------------------------------------------
       # TOML CONFIG FILE (opt-in alternative to the env vars above)
       # ---------------------------------------------------------------
       #

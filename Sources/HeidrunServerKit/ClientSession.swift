@@ -39,6 +39,12 @@ public actor ClientSession {
     /// 303 getClientInfoText profile so admins can confirm a user is
     /// connected end-to-end-encrypted.
     let isTLS: Bool
+    /// Cached server banner bytes (loaded once at HeidrunServer.start)
+    /// or `nil` when no banner is configured. Handed out unchanged
+    /// on every 212 `downloadBanner` request.
+    let bannerBytes: Data?
+    /// Format hint sent in the 212 reply's `bannerType` field (152).
+    let bannerKind: HeidrunCore.ServerBanner.Kind
 
     public init(
         registry: UserRegistry,
@@ -51,6 +57,8 @@ public actor ClientSession {
         stringEncoding: String.Encoding,
         remoteHost: String? = nil,
         isTLS: Bool = false,
+        bannerBytes: Data? = nil,
+        bannerKind: HeidrunCore.ServerBanner.Kind = .jpeg,
         writer: @escaping @Sendable (Data) async throws -> Void,
         closer: @escaping @Sendable () async -> Void
     ) {
@@ -64,6 +72,8 @@ public actor ClientSession {
         self.stringEncoding = stringEncoding
         self.remoteHost = remoteHost
         self.isTLS = isTLS
+        self.bannerBytes = bannerBytes
+        self.bannerKind = bannerKind
         self.writer = writer
         self.closer = closer
     }
@@ -291,6 +301,9 @@ public actor ClientSession {
             return true
         case 213:
             await handleUploadFolder(header: header, fields: fields)
+            return true
+        case 212:
+            await handleDownloadBanner(header: header)
             return true
         case 304:
             await handleSetClientUserInfo(header: header, fields: fields)

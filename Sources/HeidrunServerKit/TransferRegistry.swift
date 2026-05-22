@@ -20,6 +20,10 @@ public actor TransferRegistry {
         /// Client-driven folder upload — server drains items into the
         /// vault under `(path, name)` for `itemCount` iterations.
         case folderUpload(path: [String], name: String, itemCount: UInt16)
+        /// Server banner download (transID 212). Carries the cached
+        /// banner bytes the operator configured at server start —
+        /// streamed unchanged over the type=2 HTXF preamble.
+        case banner(bytes: Data)
     }
 
     private var pending: [UInt32: Pending] = [:]
@@ -79,6 +83,19 @@ public actor TransferRegistry {
         nextID &+= 1
         if nextID == 0 { nextID = 1 }
         pending[assigned] = .folderUpload(path: path, name: name, itemCount: itemCount)
+        return assigned
+    }
+
+    /// Register a server-banner download. The cached bytes ride along
+    /// so the HTXF handler can stream them without revisiting disk —
+    /// the banner image is loaded into memory once at server start
+    /// (see `HeidrunServer.start()`), then handed out unchanged on
+    /// every 212 request.
+    public func registerBanner(bytes: Data) -> UInt32 {
+        let assigned = nextID
+        nextID &+= 1
+        if nextID == 0 { nextID = 1 }
+        pending[assigned] = .banner(bytes: bytes)
         return assigned
     }
 

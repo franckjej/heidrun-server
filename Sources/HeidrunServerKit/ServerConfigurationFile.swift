@@ -1,4 +1,5 @@
 import Foundation
+import HeidrunCore
 import TOMLKit
 
 /// Persistent on-disk shape of `ServerConfiguration` — loaded by the
@@ -45,6 +46,13 @@ public struct ServerConfigurationFile: Codable, Sendable {
     public var tlsCertificate: String?
     /// Path to the PEM private key for the TLS listener.
     public var tlsPrivateKey: String?
+    /// Path to the server banner image (JPEG / GIF / BMP / PICT).
+    /// Loaded into memory at startup; `nil` disables the banner.
+    public var bannerPath: String?
+    /// `bannerType` field (152) sent in the 212 reply. One of
+    /// `"url"`, `"jpeg"`, `"gif"`, `"bmp"`, `"pict"`. Defaults to
+    /// "jpeg" when the field is omitted but `banner_path` is set.
+    public var bannerKind: String?
 
     public struct BootstrapAdminFile: Codable, Sendable {
         public var login: String?
@@ -76,7 +84,9 @@ public struct ServerConfigurationFile: Codable, Sendable {
         trackerDescription: String? = nil,
         tlsPort: UInt16? = nil,
         tlsCertificate: String? = nil,
-        tlsPrivateKey: String? = nil
+        tlsPrivateKey: String? = nil,
+        bannerPath: String? = nil,
+        bannerKind: String? = nil
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -92,6 +102,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
         self.tlsPort = tlsPort
         self.tlsCertificate = tlsCertificate
         self.tlsPrivateKey = tlsPrivateKey
+        self.bannerPath = bannerPath
+        self.bannerKind = bannerKind
     }
 
     enum CodingKeys: String, CodingKey {
@@ -109,6 +121,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
         case tlsPort = "tls_port"
         case tlsCertificate = "tls_certificate"
         case tlsPrivateKey = "tls_private_key"
+        case bannerPath = "banner_path"
+        case bannerKind = "banner_kind"
     }
 
     public enum LoadError: Swift.Error, Equatable {
@@ -205,6 +219,23 @@ public struct ServerConfigurationFile: Codable, Sendable {
         let resolvedTLSCertificate = environment["HEIDRUN_TLS_CERTIFICATE"] ?? tlsCertificate
         let resolvedTLSPrivateKey = environment["HEIDRUN_TLS_PRIVATE_KEY"] ?? tlsPrivateKey
 
+        // Banner — env var wins over file. Path drives whether the
+        // banner is offered at all; kind is just a format hint (152)
+        // sent in the 212 reply, mapped from a lowercased string.
+        let resolvedBannerPath = environment["HEIDRUN_BANNER_PATH"] ?? bannerPath
+        let resolvedBannerKindRaw = (environment["HEIDRUN_BANNER_KIND"] ?? bannerKind)?
+            .lowercased()
+        let resolvedBannerKind: HeidrunCore.ServerBanner.Kind = {
+            switch resolvedBannerKindRaw {
+            case "url":  return .url
+            case "jpeg", "jpg": return .jpeg
+            case "gif":  return .gif
+            case "bmp":  return .bmp
+            case "pict": return .pict
+            default:     return .jpeg
+            }
+        }()
+
         return ServerConfiguration(
             port: resolvedPort,
             bindHost: resolvedBindHost,
@@ -218,7 +249,9 @@ public struct ServerConfigurationFile: Codable, Sendable {
             trackerDescription: resolvedTrackerDescription,
             tlsPort: resolvedTLSPort,
             tlsCertificatePath: resolvedTLSCertificate,
-            tlsPrivateKeyPath: resolvedTLSPrivateKey
+            tlsPrivateKeyPath: resolvedTLSPrivateKey,
+            bannerPath: resolvedBannerPath,
+            bannerKind: resolvedBannerKind
         )
     }
 }

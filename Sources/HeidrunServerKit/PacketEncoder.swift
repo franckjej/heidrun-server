@@ -476,6 +476,28 @@ enum PacketEncoder {
         )
     }
 
+    /// Reply to `downloadBanner` (212). Same transferID + size
+    /// shape as a file download, plus an optional `bannerType` (152)
+    /// format hint so the client knows whether the bytes will be
+    /// JPEG / GIF / BMP / PICT / a URL.
+    static func bannerReply(
+        taskNumber: UInt32,
+        transferID: UInt32,
+        transferSize: UInt32,
+        bannerKind: HeidrunCore.ServerBanner.Kind
+    ) -> Data {
+        PacketCodec.encode(
+            classID: 1,
+            transactionID: 212,
+            taskNumber: taskNumber,
+            fields: [
+                PacketField.uint32(.transferID, transferID),
+                PacketField.uint32(.transferSize, transferSize),
+                PacketField.uint16(.bannerType, bannerKind.rawValue)
+            ]
+        )
+    }
+
     /// Reply to `getFileInfo` (206). Carries the file's name, type,
     /// creator, size, creation/modification timestamps, and optional
     /// comment.
