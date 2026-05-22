@@ -230,7 +230,10 @@ If you're using `ufw-docker`, open the two new ports the same way as
 on every successful `certbot renew`, but the heidrun process loads
 the TLS context once at startup and won't pick up the new file until
 it restarts. Add a deploy hook so a fresh cert auto-propagates and
-the container cycles:
+the process cycles. The first half (copy + chown + perms) is
+identical across deploy targets; only the restart command differs.
+
+#### Docker Compose deploy
 
 ```bash
 sudo tee /etc/letsencrypt/renewal-hooks/deploy/heidrun.sh >/dev/null <<'EOF'
@@ -250,10 +253,71 @@ EOF
 sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/heidrun.sh
 ```
 
-Certbot runs every executable in `renewal-hooks/deploy/` once after
-a successful renewal. The restart only cycles the TLS listener pair;
-existing cleartext sessions are dropped along with it, so consider
-scheduling renewal off-peak if that matters.
+#### systemd deploy (Linux)
+
+The unit at `deploy/systemd/heidrun-server.service` already grants
+the heidrun service user read access to `/etc/heidrun-server` via
+`ReadOnlyPaths=`, so the same `/etc/heidrun-server/tls/` layout
+works without changes. The deploy hook only needs to know the
+service user's `uid:gid` (which is whatever `useradd --system
+heidrun` picked at install time):
+
+```bash
+sudo tee /etc/letsencrypt/renewal-hooks/deploy/heidrun.sh >/dev/null <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+LIVE_DIR="/etc/letsencrypt/live/hotline.example.com"
+DEST="/etc/heidrun-server/tls"
+cp -L "$LIVE_DIR/fullchain.pem" "$DEST/fullchain.pem"
+cp -L "$LIVE_DIR/privkey.pem"   "$DEST/privkey.pem"
+chown heidrun:heidrun "$DEST"/{fullchain,privkey}.pem
+chmod 644 "$DEST/fullchain.pem"
+chmod 640 "$DEST/privkey.pem"
+systemctl restart heidrun-server
+EOF
+sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/heidrun.sh
+```
+
+#### launchd deploy (macOS)
+
+`launchctl kickstart -k` stops the daemon and immediately re-launches
+it (the `-k` is the "kill first" flag). The user/group names match
+whatever's set in the `.plist`:
+
+```bash
+sudo tee /usr/local/etc/heidrun-server/renew-tls.sh >/dev/null <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+LIVE_DIR="/etc/letsencrypt/live/hotline.example.com"
+DEST="/usr/local/etc/heidrun-server/tls"
+cp -L "$LIVE_DIR/fullchain.pem" "$DEST/fullchain.pem"
+cp -L "$LIVE_DIR/privkey.pem"   "$DEST/privkey.pem"
+chown _heidrun:_heidrun "$DEST"/{fullchain,privkey}.pem
+chmod 644 "$DEST/fullchain.pem"
+chmod 640 "$DEST/privkey.pem"
+launchctl kickstart -k system/org.tastybytes.heidrun-server
+EOF
+sudo chmod +x /usr/local/etc/heidrun-server/renew-tls.sh
+sudo ln -sf /usr/local/etc/heidrun-server/renew-tls.sh \
+            /etc/letsencrypt/renewal-hooks/deploy/heidrun.sh
+```
+
+(macOS doesn't have a `heidrun` system user out of the box — pick a
+service account name when you install the LaunchDaemon and use it
+consistently across the `.plist` and the hook script.)
+
+#### Notes that apply to all three
+
+Certbot runs every executable in `/etc/letsencrypt/renewal-hooks/deploy/`
+once after a successful renewal — exit non-zero from the hook and
+Certbot fails the renewal, so `set -euo pipefail` is doing real
+work. Test the hook manually after first install with
+`sudo /etc/letsencrypt/renewal-hooks/deploy/heidrun.sh`.
+
+The restart only cycles the TLS listener pair; the cleartext pair
+on 5500/5501 is dropped along with it, so any in-flight cleartext
+sessions also disconnect. Consider scheduling renewal off-peak if
+that matters.
 
 **Half-configured deploys fail fast.** Setting `tls_port` without
 both a cert path and a key path throws at startup with a typed
