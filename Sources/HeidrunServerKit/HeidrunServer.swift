@@ -46,7 +46,14 @@ public actor HeidrunServer {
             path: configuration.accountStorePath,
             passwordRounds: configuration.passwordRounds
         )
-        let fileVault = try FileVault(rootPath: configuration.filesRootPath)
+        // File metadata persistence rides along the same SQLite file
+        // as the accounts DB when one is configured; otherwise it's
+        // in-memory and wipes alongside the account store.
+        let fileMetadataStore = try FileMetadataStore(path: configuration.accountStorePath)
+        let fileVault = try FileVault(
+            rootPath: configuration.filesRootPath,
+            metadata: fileMetadataStore
+        )
         if let bootstrap = configuration.bootstrapAdmin {
             // Seed every defined privilege so the bootstrap admin can
             // actually administer. The HeidrunServer-side
@@ -358,7 +365,14 @@ public actor HeidrunServer {
             }
             guard let envelope = try? UploadFraming.decode(payload) else { return }
             let storedName = envelope.fileName.isEmpty ? name : envelope.fileName
-            _ = await files.putFile(at: path, name: storedName, data: envelope.data, resume: resume)
+            _ = await files.putFile(
+                at: path,
+                name: storedName,
+                data: envelope.data,
+                type: envelope.type,
+                creator: envelope.creator,
+                resume: resume
+            )
         }
     }
 }

@@ -6,7 +6,7 @@ import HeidrunCore
 @Suite("FileVault")
 struct FileVaultTests {
     private func makeVaultWithSeededFiles() async throws -> (FileVault, URL) {
-        let vault = try FileVault(rootPath: nil)
+        let vault = try FileVault(rootPath: nil, metadata: FileMetadataStore())
         let root = await vault.root
         let fileManager = FileManager.default
         // Seed: <root>/readme.txt and <root>/Folder/inside.txt

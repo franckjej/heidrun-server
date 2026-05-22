@@ -79,16 +79,18 @@ public actor FileVault {
 
     private let rootURL: URL
     private let fileManager: FileManager
-    /// In-memory comment store. Keyed by the file's relative path from
-    /// the root. Wipes on restart — same trade-off NewsTree makes;
-    /// persistent metadata storage is deferred to M4.
-    private var comments: [String: String] = [:]
+    /// Persisted per-file metadata (comments + HFS type/creator).
+    /// Path-keyed; bind-mounted RAID at `rootURL` is fine because the
+    /// metadata DB lives elsewhere and joins are by relative path.
+    private let metadata: FileMetadataStore
 
     public init(
         rootPath: String? = nil,
-        fileManager: FileManager = .default
+        fileManager: FileManager = .default,
+        metadata: FileMetadataStore
     ) throws {
         self.fileManager = fileManager
+        self.metadata = metadata
         if let rootPath {
             self.rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)
             var isDir: ObjCBool = false
@@ -109,8 +111,11 @@ public actor FileVault {
 
     /// List entries at the given path. Returns `nil` when the path
     /// doesn't exist, isn't a directory, or contains a forbidden
-    /// component.
-    public func list(at path: [String]) -> [Entry]? {
+    /// component. Each entry's HFS type/creator falls back to
+    /// `.file/.unknown` when the metadata store has no row — this is
+    /// the expected path for files dropped onto the bind-mounted RAID
+    /// out-of-band.
+    public func list(at path: [String]) async -> [Entry]? {
         guard let directoryURL = resolved(path: path), isDirectory(directoryURL) else { return nil }
         do {
             let children = try fileManager.contentsOfDirectory(
@@ -118,9 +123,17 @@ public actor FileVault {
                 includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey],
                 options: [.skipsHiddenFiles]
             )
-            return children
-                .sorted { $0.lastPathComponent < $1.lastPathComponent }
-                .map(entry(at:))
+            var entries: [Entry] = []
+            for child in children.sorted(by: { $0.lastPathComponent < $1.lastPathComponent }) {
+                var built = entry(at: child)
+                if built.type != .folder,
+                   let row = await metadata.metadata(path: relativeKey(path: path, name: built.name)) {
+                    built.type = row.type
+                    built.creator = row.creator
+                }
+                entries.append(built)
+            }
+            return entries
         } catch {
             return nil
         }
@@ -205,17 +218,21 @@ public actor FileVault {
 
     /// Snapshot metadata for a single entry at `(path, name)`. Returns
     /// `nil` when the entry is missing or `name` is forbidden.
-    public func info(at path: [String], name: String) -> Info? {
+    public func info(at path: [String], name: String) async -> Info? {
         guard Self.isSafeComponent(name) else { return nil }
         guard let parent = resolved(path: path) else { return nil }
         let fileURL = parent.appendingPathComponent(name, isDirectory: false)
         guard fileManager.fileExists(atPath: fileURL.path) else { return nil }
-        let entry = self.entry(at: fileURL)
+        var entry = self.entry(at: fileURL)
         let attributes = (try? fileManager.attributesOfItem(atPath: fileURL.path)) ?? [:]
         let created = (attributes[.creationDate] as? Date) ?? .distantPast
         let modified = (attributes[.modificationDate] as? Date) ?? .distantPast
-        let comment = comments[relativeKey(path: path, name: name)] ?? ""
-        return Info(entry: entry, created: created, modified: modified, comment: comment)
+        let stored = await metadata.metadata(path: relativeKey(path: path, name: name))
+        if let stored, entry.type != .folder {
+            entry.type = stored.type
+            entry.creator = stored.creator
+        }
+        return Info(entry: entry, created: created, modified: modified, comment: stored?.comment ?? "")
     }
 
     // MARK: - Writes
@@ -223,14 +240,20 @@ public actor FileVault {
     /// Delete a file or folder at `(path, name)`. Returns `true` on
     /// success, `false` when the entry is missing or `name` is unsafe.
     @discardableResult
-    public func delete(at path: [String], name: String) -> Bool {
+    public func delete(at path: [String], name: String) async -> Bool {
         guard Self.isSafeComponent(name) else { return false }
         guard let parent = resolved(path: path) else { return false }
         let url = parent.appendingPathComponent(name, isDirectory: false)
         guard fileManager.fileExists(atPath: url.path) else { return false }
+        let wasFolder = isDirectory(url)
         do {
             try fileManager.removeItem(at: url)
-            comments.removeValue(forKey: relativeKey(path: path, name: name))
+            let key = relativeKey(path: path, name: name)
+            if wasFolder {
+                _ = await metadata.removeSubtree(path: key)
+            } else {
+                _ = await metadata.remove(path: key)
+            }
             return true
         } catch {
             return false
@@ -255,19 +278,22 @@ public actor FileVault {
 
     /// Rename a file or folder at `(path, oldName)` to `newName`.
     @discardableResult
-    public func rename(at path: [String], from oldName: String, to newName: String) -> Bool {
+    public func rename(at path: [String], from oldName: String, to newName: String) async -> Bool {
         guard Self.isSafeComponent(oldName), Self.isSafeComponent(newName) else { return false }
         guard let parent = resolved(path: path) else { return false }
         let source = parent.appendingPathComponent(oldName, isDirectory: false)
         let target = parent.appendingPathComponent(newName, isDirectory: false)
         guard fileManager.fileExists(atPath: source.path),
               !fileManager.fileExists(atPath: target.path) else { return false }
+        let wasFolder = isDirectory(source)
         do {
             try fileManager.moveItem(at: source, to: target)
             let oldKey = relativeKey(path: path, name: oldName)
             let newKey = relativeKey(path: path, name: newName)
-            if let comment = comments.removeValue(forKey: oldKey) {
-                comments[newKey] = comment
+            if wasFolder {
+                _ = await metadata.renameSubtree(from: oldKey, to: newKey)
+            } else {
+                _ = await metadata.rename(from: oldKey, to: newKey)
             }
             return true
         } catch {
@@ -282,7 +308,7 @@ public actor FileVault {
         from sourcePath: [String],
         name: String,
         to destinationPath: [String]
-    ) -> Bool {
+    ) async -> Bool {
         guard Self.isSafeComponent(name) else { return false }
         guard let sourceParent = resolved(path: sourcePath),
               let destinationParent = resolved(path: destinationPath) else { return false }
@@ -291,12 +317,15 @@ public actor FileVault {
         guard fileManager.fileExists(atPath: source.path),
               isDirectory(destinationParent),
               !fileManager.fileExists(atPath: target.path) else { return false }
+        let wasFolder = isDirectory(source)
         do {
             try fileManager.moveItem(at: source, to: target)
             let oldKey = relativeKey(path: sourcePath, name: name)
             let newKey = relativeKey(path: destinationPath, name: name)
-            if let comment = comments.removeValue(forKey: oldKey) {
-                comments[newKey] = comment
+            if wasFolder {
+                _ = await metadata.renameSubtree(from: oldKey, to: newKey)
+            } else {
+                _ = await metadata.rename(from: oldKey, to: newKey)
             }
             return true
         } catch {
@@ -328,30 +357,34 @@ public actor FileVault {
     }
 
     @discardableResult
-    public func setComment(at path: [String], name: String, comment: String) -> Bool {
+    public func setComment(at path: [String], name: String, comment: String) async -> Bool {
         guard Self.isSafeComponent(name) else { return false }
         guard let parent = resolved(path: path) else { return false }
         let url = parent.appendingPathComponent(name, isDirectory: false)
         guard fileManager.fileExists(atPath: url.path) else { return false }
         let key = relativeKey(path: path, name: name)
-        if comment.isEmpty {
-            comments.removeValue(forKey: key)
-        } else {
-            comments[key] = comment
-        }
+        _ = await metadata.setComment(path: key, comment: comment)
         return true
     }
 
     /// Commit an uploaded file's data fork to disk. Used by the HTXF
     /// upload side-channel. Returns `false` when the destination
     /// already exists (and `resume == false`) or the path is unsafe.
+    ///
+    /// On success, persists `type` / `creator` from the FILP envelope
+    /// into the metadata store so a follow-up `info(...)` reads them
+    /// back instead of falling through to the `.file/.unknown`
+    /// default. Type/creator default to `.file/.unknown` for callers
+    /// that don't carry them (resumes mid-stream, legacy tests).
     @discardableResult
     public func putFile(
         at path: [String],
         name: String,
         data: Data,
+        type: HeidrunCore.FourCharCode = .file,
+        creator: HeidrunCore.FourCharCode = .unknown,
         resume: Bool = false
-    ) -> Bool {
+    ) async -> Bool {
         guard Self.isSafeComponent(name) else { return false }
         guard let parent = resolved(path: path), isDirectory(parent) else { return false }
         let url = parent.appendingPathComponent(name, isDirectory: false)
@@ -361,18 +394,28 @@ public actor FileVault {
                 try handle.seekToEnd()
                 try handle.write(contentsOf: data)
                 try handle.close()
-                return true
+            } catch {
+                return false
+            }
+        } else {
+            guard !fileManager.fileExists(atPath: url.path) else { return false }
+            do {
+                try data.write(to: url)
             } catch {
                 return false
             }
         }
-        guard !fileManager.fileExists(atPath: url.path) else { return false }
-        do {
-            try data.write(to: url)
-            return true
-        } catch {
-            return false
+        // Persist type/creator (skipped when both are the defaults — no
+        // point writing a row that wouldn't change anything an absent
+        // row already implies).
+        if type != .file || creator != .unknown {
+            _ = await metadata.setTypeCreator(
+                path: relativeKey(path: path, name: name),
+                type: type,
+                creator: creator
+            )
         }
+        return true
     }
 
     // MARK: - Helpers

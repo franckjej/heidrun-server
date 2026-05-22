@@ -83,6 +83,8 @@ enum ServerFolderUpload {
                 at: Array(fileParent),
                 name: storedName,
                 data: envelope.data,
+                type: envelope.type,
+                creator: envelope.creator,
                 resume: false
             )
         }

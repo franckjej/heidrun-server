@@ -155,8 +155,8 @@ from clients. Most firewalls just open both — they're conventionally
 
 | Path | What's there |
 |---|---|
-| `db_path` | One SQLite file. Backed up = backed up accounts |
-| `files_root` | The file tree the server serves. Plain on-disk files; modern filesystems handle it. Comments are an in-memory sidecar — not yet persisted (see v1.5 notes) |
+| `db_path` | One SQLite file. Holds **accounts** + per-file **metadata** (comments + HFS type/creator). Backed up = backed up accounts + metadata |
+| `files_root` | The file tree the server serves. Plain on-disk files; modern filesystems handle it. File comments + HFS type/creator now persist via the SQLite DB above (path-keyed); files dropped on the tree out-of-band have no row and fall back to `.file/.unknown` defaults |
 
 ### Resource forks
 
@@ -166,9 +166,14 @@ need them for an archival workflow, both ends need work.
 
 ### Persistent metadata
 
-In v1 the SQLite database carries accounts + their hashes. File
-metadata (HFS type/creator, comments, icons) is not yet persisted —
-comments live in memory and wipe on restart. This is on the v1.5 list.
+The SQLite database carries accounts, their hashes, and per-file
+metadata (HFS type/creator + comments). Metadata is keyed by the
+file's relative path from `files_root` so the same DB works whether
+the files tree lives in the named volume or a bind-mounted RAID.
+Folder renames + moves rewrite descendant rows in one transaction;
+file deletes drop the row; uploads persist the FILP envelope's
+type/creator. Custom per-file icons are not yet persisted — that's
+the remaining v1.5 item in this area.
 
 ## Tested deployment images
 
@@ -191,8 +196,8 @@ comments live in memory and wipe on restart. This is on the v1.5 list.
 The following are deferred to v1.5:
 
 - TLS-wrapped variant on a sibling port (currently cleartext only)
-- Persistent file metadata (HFS type/creator, comments, icons in
-  SQLite)
+- Persistent file icons (HFS type/creator + comments now persist; icon
+  blobs are still deferred)
 - Server banner image
 - Admin CLI tool (`heidrun-server-admin`)
 - launchd / systemd integration tests
