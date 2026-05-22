@@ -45,20 +45,24 @@ WORKDIR /src
 # alone. This layer is cached as long as those two files don't
 # change, so source edits don't re-fetch the whole SPM graph.
 #
-# The token reaches `swift package resolve` via GIT_CONFIG_COUNT (git
-# 2.31+) — a per-process git config that lives only in this shell's
-# environment and never touches a config file. Combined with the
-# BuildKit secret mount, the token has no path into any image layer:
-# the secret file is unmounted when the RUN exits, and the env vars
-# die with the shell.
+# The token is written to a temporary entry in /root/.gitconfig
+# inside the RUN, then `--remove-section`'d before the layer
+# commits — git is guaranteed to read this config when SPM shells
+# out to it. Both an HTTPS and an SSH `insteadOf` are registered so
+# that an SPM cache mount carrying an `origin` URL from an earlier
+# build (HTTPS or SSH) still resolves through the authed HTTPS
+# endpoint. If RUN fails before the cleanup line, the layer is
+# discarded entirely — the token has no path into the final image.
 COPY Package.swift Package.resolved ./
 RUN --mount=type=secret,id=gh_token,required=true \
     --mount=type=cache,target=/root/.cache/org.swift.swiftpm \
     GH_TOKEN="$(cat /run/secrets/gh_token)" \
-    GIT_CONFIG_COUNT=1 \
-    GIT_CONFIG_KEY_0="url.https://x-access-token:$(cat /run/secrets/gh_token)@github.com/.insteadOf" \
-    GIT_CONFIG_VALUE_0="https://github.com/" \
-    swift package resolve
+ && AUTHED_BASE="https://x-access-token:${GH_TOKEN}@github.com/" \
+ && git config --global "url.${AUTHED_BASE}.insteadOf" "https://github.com/" \
+ && git config --global --add "url.${AUTHED_BASE}.insteadOf" "git@github.com:" \
+ && git config --global --add "url.${AUTHED_BASE}.insteadOf" "ssh://git@github.com/" \
+ && swift package resolve \
+ && git config --global --remove-section "url.${AUTHED_BASE}"
 
 # Step 2: bring in the sources and build. No secret needed here — the
 # resolve step already populated the SPM checkout cache, so the build
