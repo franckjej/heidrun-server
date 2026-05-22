@@ -83,6 +83,40 @@ extension ClientSession {
         }
     }
 
+    /// Handle `createNewsBundle` (381): create a folder named `fileName`
+    /// under the addressed `newsPath`. No-reply per HEClient.m.
+    func handleCreateNewsBundle(header: PacketHeader, fields: [PacketField]) async {
+        await createNewsContainer(
+            header: header,
+            fields: fields,
+            nameKey: .fileName,
+            kind: .bundle
+        )
+    }
+
+    /// Handle `createNewsCategory` (382): create a category named
+    /// `newsCategoryName` under the addressed `newsPath`. No-reply.
+    func handleCreateNewsCategory(header: PacketHeader, fields: [PacketField]) async {
+        await createNewsContainer(
+            header: header,
+            fields: fields,
+            nameKey: .newsCategoryName,
+            kind: .category
+        )
+    }
+
+    private func createNewsContainer(
+        header: PacketHeader,
+        fields: [PacketField],
+        nameKey: HotlineObjectKey,
+        kind: NewsBundle.Kind
+    ) async {
+        let path = newsPath(from: fields)
+        guard let name = fields.string(nameKey, encoding: stringEncoding),
+              !name.isEmpty else { return }
+        _ = await news.insertBundle(at: path, name: name, kind: kind)
+    }
+
     /// Decode the `.newsPath` (325) field into `[String]`. Defaults to
     /// `[]` (root) when the field is missing or malformed.
     fileprivate func newsPath(from fields: [PacketField]) -> [String] {

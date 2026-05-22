@@ -1,4 +1,5 @@
 import Foundation
+import HeidrunCore
 
 /// In-memory news store. Owns the legacy plain feed (a chronological
 /// list of strings the 101 transaction joins with newlines) and the
@@ -58,6 +59,14 @@ public actor NewsTree {
         Self.insertPost(post, at: path, in: &threaded)
     }
 
+    /// Insert a new bundle (folder) or category named `name` under the
+    /// folder at `path`. Returns `true` on success; `false` when the
+    /// path doesn't resolve to a folder, or a sibling with the same
+    /// name already exists.
+    public func insertBundle(at path: [String], name: String, kind: NewsBundle.Kind) -> Bool {
+        Self.insert(BundleNode(name: name, kind: kind), at: path, in: &threaded)
+    }
+
     // MARK: - Recursive helpers (pure, value-type)
 
     private static func children(in pool: [BundleNode], at path: [String]) -> [BundleNode]? {
@@ -92,5 +101,21 @@ public actor NewsTree {
         }
         guard pool[index].kind == .bundle else { return false }
         return insertPost(post, at: Array(path.dropFirst()), in: &pool[index].children)
+    }
+
+    private static func insert(
+        _ node: BundleNode,
+        at path: [String],
+        in pool: inout [BundleNode]
+    ) -> Bool {
+        if path.isEmpty {
+            guard !pool.contains(where: { $0.name == node.name }) else { return false }
+            pool.append(node)
+            return true
+        }
+        guard let head = path.first,
+              let index = pool.firstIndex(where: { $0.name == head }),
+              pool[index].kind == .bundle else { return false }
+        return insert(node, at: Array(path.dropFirst()), in: &pool[index].children)
     }
 }

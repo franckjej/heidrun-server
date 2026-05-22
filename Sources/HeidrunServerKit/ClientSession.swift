@@ -154,6 +154,12 @@ public actor ClientSession {
         case 410:
             await handlePostNewsThread(header: header, fields: fields)
             return true
+        case 381:
+            await handleCreateNewsBundle(header: header, fields: fields)
+            return true
+        case 382:
+            await handleCreateNewsCategory(header: header, fields: fields)
+            return true
         case 110:
             await handleKick(header: header, fields: fields)
             return true
