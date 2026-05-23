@@ -195,6 +195,35 @@ Three ways to bring the admin row up to date:
    you care about). `docker compose down -v && docker compose up -d`
    wipes the volume and fires the seed afresh.
 
+### Guest account
+
+Anonymous connections (empty login on the wire) attach to a real
+`guest` row in the accounts DB. The server ensures the row exists at
+every startup, so:
+
+- Operators **modify guest privileges the same way they modify any
+  other account** — `modifyLogin` (transID 353) from a connected
+  admin client. The change persists across restarts; the seed only
+  fills in the row when it's missing.
+- Default seed: chat (read + send), private chat + DMs, news read,
+  file + folder downloads, `showInList`. Deliberately **without**
+  `.getUserInfo` so guests can't fetch other users' IPs / login
+  timestamps / client versions via the 303 transaction.
+- To lock anonymous access out entirely, `deleteLogin` (transID 351)
+  the `guest` row. Empty-login connections then attach with `nil`
+  privileges (same as the pre-guest-account behaviour) — every
+  gated handler rejects them.
+
+The seed log line on startup is:
+
+```
+guest account seeded   login=guest permissions=0x18000103e04
+```
+
+It only fires on the first launch (or after a `deleteLogin guest` +
+restart). Subsequent restarts see the row and keep whatever
+permissions the operator left in it.
+
 ### Ports
 
 The server binds two adjacent TCP ports: `port` (Hotline control) and

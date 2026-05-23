@@ -107,4 +107,51 @@ struct AccountStoreTests {
         #expect(secondSeed == false)
         #expect(count == 1)
     }
+
+    @Test("ensureExists seeds a missing login and preserves operator edits across calls")
+    func ensureExistsIsIdempotent() async throws {
+        let store = try makeStore()
+
+        // Pre-populate so the table isn't empty — ensureExists targets a
+        // *specific* missing login, distinct from bootstrapIfEmpty.
+        _ = try await store.bootstrapIfEmpty(
+            login: "admin",
+            password: "admin",
+            nickname: "Admin",
+            permissions: AccountPrivilege.disconnectUsers.rawValue
+        )
+
+        let firstSeed = try await store.ensureExists(
+            login: Account.guestLogin,
+            password: "",
+            nickname: "Guest",
+            permissions: Account.guestDefaultPermissions
+        )
+        let guestAfterSeed = try #require(try await store.get(login: Account.guestLogin))
+        #expect(firstSeed == true)
+        #expect(guestAfterSeed.permissions == Account.guestDefaultPermissions)
+        #expect(guestAfterSeed.nickname == "Guest")
+
+        // Simulate an operator tightening (or loosening) guest's
+        // permissions via modifyLogin — the next ensureExists call must
+        // NOT overwrite the stored value.
+        let tightened: UInt64 = 0x0000_0000_0000_0200   // only readChat
+        _ = try await store.update(
+            login: Account.guestLogin,
+            nickname: nil,
+            iconID: nil,
+            permissions: tightened,
+            newPassword: nil
+        )
+
+        let secondSeed = try await store.ensureExists(
+            login: Account.guestLogin,
+            password: "",
+            nickname: "Guest",
+            permissions: Account.guestDefaultPermissions
+        )
+        let guestAfterReseed = try #require(try await store.get(login: Account.guestLogin))
+        #expect(secondSeed == false)
+        #expect(guestAfterReseed.permissions == tightened)
+    }
 }

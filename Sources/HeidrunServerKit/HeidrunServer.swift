@@ -85,6 +85,23 @@ public actor HeidrunServer {
                 ])
             }
         }
+        // Always make sure a `guest` row exists so anonymous logins
+        // (empty login on the wire) pick up operator-configurable
+        // permissions, and the row surfaces in the admin UI for
+        // tightening or loosening via modifyLogin (353). Idempotent —
+        // pre-existing rows keep their stored permissions.
+        let guestSeeded = try await accountStore.ensureExists(
+            login: Account.guestLogin,
+            password: "",
+            nickname: "Guest",
+            permissions: Account.guestDefaultPermissions
+        )
+        if guestSeeded {
+            serverLogger.info("guest account seeded", metadata: [
+                "login": "\(Account.guestLogin)",
+                "permissions": "0x\(String(Account.guestDefaultPermissions, radix: 16))"
+            ])
+        }
         self.accounts = accountStore
 
         // Load the server banner once at startup, if configured. Same

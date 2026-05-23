@@ -1,4 +1,5 @@
 import Foundation
+import HeidrunCore
 
 /// One row in the `accounts` SQLite table. Value-type by design —
 /// `AccountStore` snapshots accounts on read and consumers never mutate
@@ -84,4 +85,38 @@ extension Account? {
     public var initialHotStatus: UInt16 {
         self?.initialHotStatus ?? 0
     }
+}
+
+extension Account {
+    /// Stable login string for the seeded guest account. Anonymous
+    /// connections (empty login on the wire) attach to this row at
+    /// authenticate time so an operator can adjust the guest's
+    /// privileges via the same `modifyLogin` (353) admin transaction
+    /// used for any other account.
+    public static let guestLogin = "guest"
+
+    /// Conservative default permission set seeded on a fresh `guest`
+    /// row. Lets anonymous users chat, read public news, browse +
+    /// download files, exchange private messages, and appear in the
+    /// roster. Deliberately omits:
+    ///
+    /// - `.getUserInfo` so guests can't fetch other users' IPs,
+    ///   login times, or client versions via the 303 transaction.
+    /// - Every write bit (upload, delete, rename, move, mkdir,
+    ///   comment) so guests can't mutate the file tree.
+    /// - Every admin / news-write / broadcast bit.
+    /// - `.changeOwnPassword` because `guest` is a shared role; one
+    ///   guest changing the password would lock the rest out.
+    ///
+    /// Operators tighten or relax via `modifyLogin` (353).
+    public static let guestDefaultPermissions: UInt64 =
+        UserPrivileges.readChat.rawValue
+        | UserPrivileges.sendChat.rawValue
+        | UserPrivileges.initiatePrivateChat.rawValue
+        | UserPrivileges.closePrivateChat.rawValue
+        | UserPrivileges.showInList.rawValue
+        | UserPrivileges.readNews.rawValue
+        | UserPrivileges.downloadFiles.rawValue
+        | UserPrivileges.downloadFolders.rawValue
+        | UserPrivileges.sendMessages.rawValue
 }

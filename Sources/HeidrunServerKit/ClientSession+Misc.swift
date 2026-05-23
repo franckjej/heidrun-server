@@ -81,12 +81,4 @@ extension ClientSession {
         }
         return path.components
     }
-
-    /// `true` when the authenticated account has every bit in
-    /// `required` set. Guests (no authenticated account) have nothing
-    /// granted, so the check returns `false` for them.
-    private func hasPrivilege(_ required: UserPrivileges) -> Bool {
-        guard let account = authenticatedAccount else { return false }
-        return (account.permissions & required.rawValue) == required.rawValue
-    }
 }

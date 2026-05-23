@@ -128,6 +128,14 @@ public actor ClientSession {
         await closer()
     }
 
+    /// `true` when the authenticated account has every bit in `required`
+    /// set. Guests with no account row (older deploys, or the guest row
+    /// was deleted) report `false` for every check.
+    func hasPrivilege(_ required: UserPrivileges) -> Bool {
+        guard let account = authenticatedAccount else { return false }
+        return (account.permissions & required.rawValue) == required.rawValue
+    }
+
     /// Idle-away supervisor callback. If the session has been inactive
     /// for at least `threshold` seconds, set the `.away` flag on its
     /// broadcast user record. When activity resumes (lastActivityAt
@@ -412,6 +420,14 @@ public actor ClientSession {
                 return
             }
             self.authenticatedAccount = account
+        } else {
+            // Empty login = guest. Attach the seeded `guest` row so the
+            // session picks up the operator-configured guest permission
+            // set (and any later modifyLogin adjustments). Falls back
+            // to `nil` when the row is missing — deployments that
+            // explicitly deleted it to disable anonymous access keep
+            // the old "no privileges" behaviour.
+            self.authenticatedAccount = try? await accounts.get(login: Account.guestLogin)
         }
 
         self.nickname = nick
@@ -490,7 +506,21 @@ public actor ClientSession {
     /// and reply with the standard envelope plus a column-aligned
     /// "profile" info text — the format mature Hotline servers send,
     /// matching what `HeidrunTestServer` renders.
+    ///
+    /// Gated on the `.getUserInfo` privilege: the profile leaks the
+    /// target's remote IP, login timestamp, and client version, so
+    /// guests (and any other account missing the bit) get an
+    /// errorID=1 reply instead. Operators grant individual accounts
+    /// the bit via `modifyLogin` (353) when they need admins/mods to
+    /// see peer details.
     private func handleGetClientInfo(header: PacketHeader, fields: [PacketField]) async {
+        guard hasPrivilege(.getUserInfo) else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: 303
+            ))
+            return
+        }
         let target = fields.uint16(.socket) ?? 0
         let members = await registry.snapshot()
         guard let member = members.first(where: { $0.socketID == target }) else {

@@ -185,6 +185,34 @@ public actor AccountStore {
         return true
     }
 
+    /// Insert an account with the given login only if no row with that
+    /// login currently exists. Idempotent across restarts; pre-existing
+    /// rows keep their stored fields (especially `permissions`) so
+    /// operator adjustments via `modifyLogin` survive subsequent boots.
+    /// Returns `true` when this call actually inserted a row.
+    ///
+    /// Distinct from `bootstrapIfEmpty`: that method seeds the *first*
+    /// row in a fresh DB; this one seeds a *specific* missing login
+    /// against an already-populated table — used by the guest seed
+    /// that needs to coexist with a previously-seeded admin row.
+    @discardableResult
+    public func ensureExists(
+        login: String,
+        password: String,
+        nickname: String,
+        permissions: UInt64
+    ) throws -> Bool {
+        if try get(login: login) != nil { return false }
+        _ = try create(
+            login: login,
+            password: password,
+            nickname: nickname,
+            iconID: 0,
+            permissions: permissions
+        )
+        return true
+    }
+
     // MARK: - Migrations
 
     private static func runMigrations(on queue: DatabaseQueue) throws {
