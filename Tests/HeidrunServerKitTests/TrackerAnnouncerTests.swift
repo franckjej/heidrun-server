@@ -181,6 +181,38 @@ struct TrackerAnnouncerTests {
         #expect(captured.first?.host.host == "working")
     }
 
+    @Test("passID is stable across cycles so trackers don't see a phantom restart every 5 min")
+    func passIDIsStable() async {
+        let recorder = SendRecorder()
+        let announcer = TrackerAnnouncer(
+            trackers: [TrackerHost(host: "tracker.example")],
+            serverName: "S",
+            announceDescription: "D",
+            advertisedPort: 5500,
+            userCountProvider: { 0 },
+            send: { tracker, payload in
+                await recorder.record(tracker, payload)
+            }
+            // No fixed `randomPassID` injection — the default mints a
+            // single random value at init. The test passes regardless
+            // of what that value is; what we're asserting is that the
+            // *same* bytes show up across cycles.
+        )
+
+        await announcer.announceOnce()
+        await announcer.announceOnce()
+        await announcer.announceOnce()
+
+        let captured = await recorder.sends
+        #expect(captured.count == 3)
+        // passID lives at byte offset 8 in the prefix: skip 0001 (ver),
+        // port, userCount, tlsPort → 8 bytes — then 4 bytes of passID
+        // big-endian.
+        let passIDBytes = captured.map { $0.packet.subdata(in: 8..<12) }
+        #expect(passIDBytes[0] == passIDBytes[1])
+        #expect(passIDBytes[1] == passIDBytes[2])
+    }
+
     @Test("empty tracker list short-circuits start without spawning a task")
     func emptyListNoop() async {
         let announcer = TrackerAnnouncer(

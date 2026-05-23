@@ -33,7 +33,15 @@ public actor TrackerAnnouncer {
     private let userCountProvider: UserCountProvider
     private let send: DatagramSender
     private let interval: Duration
-    private let randomPassID: @Sendable () -> UInt32
+    /// Stable nonce kept for the lifetime of this announcer instance.
+    /// Mobius-compatible trackers key restart detection off `(sourceIP,
+    /// advertisedPort, passID)`: a *changed* passID from the same
+    /// endpoint signals "the server process restarted, refresh the
+    /// entry." Rotating it every cycle would tell the tracker we
+    /// restart every five minutes — harmless on lenient trackers, but
+    /// noisy and capable of tripping anti-flap heuristics on stricter
+    /// ones. We compute it once at construction and reuse.
+    private let passID: UInt32
 
     private var runningTask: Task<Void, Never>?
 
@@ -46,7 +54,7 @@ public actor TrackerAnnouncer {
         userCountProvider: @escaping UserCountProvider,
         send: @escaping DatagramSender,
         interval: Duration = TrackerAnnouncer.updateInterval,
-        randomPassID: @escaping @Sendable () -> UInt32 = { UInt32.random(in: 1...UInt32.max) }
+        randomPassID: @Sendable () -> UInt32 = { UInt32.random(in: 1...UInt32.max) }
     ) {
         self.trackers = trackers
         self.serverName = serverName
@@ -56,7 +64,11 @@ public actor TrackerAnnouncer {
         self.userCountProvider = userCountProvider
         self.send = send
         self.interval = interval
-        self.randomPassID = randomPassID
+        // Mint the passID exactly once. The injected `randomPassID`
+        // closure is still useful for tests that want deterministic
+        // bytes — they pass a constant, we call it once, the constant
+        // sticks for every subsequent send.
+        self.passID = randomPassID()
     }
 
     /// Send the first heartbeat right now, then loop on `interval`.
@@ -94,7 +106,6 @@ public actor TrackerAnnouncer {
     /// tests can drive a single cycle without spinning up the loop.
     public func announceOnce() async {
         let userCount = await userCountProvider()
-        let passID = randomPassID()
         for tracker in trackers {
             let registration = TrackerRegistration(
                 port: advertisedPort,
