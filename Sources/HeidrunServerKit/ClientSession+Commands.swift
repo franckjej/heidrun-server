@@ -59,6 +59,10 @@ extension ClientSession {
             await handleUptimeCommand(args: args)
         case "kick":
             await handleKickCommand(args: args)
+        case "invisible":
+            await handleInvisibleCommand(args: args)
+        case "visible":
+            await handleVisibleCommand(args: args)
         case "help":
             await handleHelpCommand(args: args)
         default:
@@ -135,9 +139,12 @@ extension ClientSession {
 
     /// `/who` / `/users` — sender-only dump of the live roster with
     /// each connected user's nickname + socketID so the operator has
-    /// the socket numbers handy for `/kick`.
+    /// the socket numbers handy for `/kick`. Invisible peers are
+    /// filtered the same way the wire `getUserList` (300) reply
+    /// filters them; the requester always sees themselves regardless
+    /// of their own visibility state.
     func handleWhoCommand(args: [String]) async {
-        let members = await registry.snapshot()
+        let members = await registry.snapshot(visibleTo: socketID)
         var lines: [String] = ["Connected users (\(members.count)):"]
         for member in members {
             lines.append("  \(member.nickname) (socket=\(member.socketID))")
@@ -171,8 +178,62 @@ extension ClientSession {
             "tls: \(isTLS ? "yes" : "no")",
             "admin: \(isAdmin)",
             "away: \(awayBroadcast)",
+            "invisible: \(isInvisible)",
             "permissions: 0x\(String(permissions, radix: 16))"
         ])
+    }
+
+    /// `/invisible` — admin-only. Hide the session from peer rosters.
+    /// Broadcasts `userLeft` (302) so existing clients drop the row,
+    /// flips the registry's invisibility bit so subsequent
+    /// `getUserList` (300) replies exclude the session, and suppresses
+    /// future `userChanged` broadcasts (idle-away, /away, nickname
+    /// changes) until the operator runs `/visible` again. The session
+    /// stays fully connected — chat lines, broadcasts, file ops all
+    /// reach them — they're just absent from rosters.
+    func handleInvisibleCommand(args: [String]) async {
+        guard hasPrivilege(.disconnectUsers) else {
+            await sendSystemReply("Permission denied: /invisible requires the disconnectUsers privilege.")
+            return
+        }
+        if isInvisible {
+            await sendSystemReply("Already invisible.")
+            return
+        }
+        isInvisible = true
+        _ = await registry.updateMemberInvisible(socketID: socketID, isInvisible: true)
+        await registry.broadcast(
+            PacketEncoder.userLeftPush(socketID: socketID),
+            excluding: socketID
+        )
+        await sendSystemReply("You are now invisible. Peers see you as left.")
+    }
+
+    /// `/visible` — admin-only. Re-introduce the session to peers'
+    /// rosters: clears the registry's invisibility bit and broadcasts
+    /// `userChanged` (301) carrying the current member record so
+    /// existing clients re-add the row with whatever nickname / icon
+    /// / status the session has now.
+    func handleVisibleCommand(args: [String]) async {
+        guard hasPrivilege(.disconnectUsers) else {
+            await sendSystemReply("Permission denied: /visible requires the disconnectUsers privilege.")
+            return
+        }
+        if !isInvisible {
+            await sendSystemReply("Already visible.")
+            return
+        }
+        isInvisible = false
+        guard let updated = await registry.updateMemberInvisible(
+            socketID: socketID, isInvisible: false
+        ) else {
+            return
+        }
+        await registry.broadcast(
+            PacketEncoder.userChangedPush(member: updated, encoding: stringEncoding),
+            excluding: socketID
+        )
+        await sendSystemReply("You are now visible.")
     }
 
     /// `/uptime` — sender-only one-liner with the server's uptime.
@@ -225,6 +286,8 @@ extension ClientSession {
             "  /me <action>        — send an action chat line",
             "  /broadcast <text>   — server-wide broadcast popup (admin)",
             "  /kick <socketID>    — disconnect a user by socket (admin)",
+            "  /invisible          — hide from peer user lists (admin)",
+            "  /visible            — re-appear in peer user lists (admin)",
             "  /help               — show this list"
         ])
     }

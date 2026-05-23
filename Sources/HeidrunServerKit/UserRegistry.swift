@@ -17,6 +17,12 @@ public actor UserRegistry {
         public var nickname: String
         public var icon: UInt16
         public var status: UInt16
+        /// `true` when the session is hidden from peer user-list
+        /// snapshots (via `/invisible`). The session stays connected
+        /// and continues to receive events — it just doesn't appear
+        /// in other users' rosters and any of its `userChanged`
+        /// broadcasts are suppressed at the source.
+        public var isInvisible: Bool = false
     }
 
     private var nextSocketID: UInt16 = 1
@@ -73,6 +79,18 @@ public actor UserRegistry {
         return existing
     }
 
+    /// Flip the `isInvisible` bit on an existing member. Returns the
+    /// updated `Member` so `/invisible` and `/visible` can fan out a
+    /// `userLeft` / `userChanged` to peers — the registry doesn't
+    /// broadcast on its own, callers control the wire side.
+    @discardableResult
+    public func updateMemberInvisible(socketID: UInt16, isInvisible: Bool) -> Member? {
+        guard var existing = members[socketID] else { return nil }
+        existing.isInvisible = isInvisible
+        members[socketID] = existing
+        return existing
+    }
+
     /// All currently-registered `ClientSession` instances, paired with
     /// their socket IDs. Used by background supervisors (idle-away)
     /// that need to inspect or update per-session state without going
@@ -86,6 +104,18 @@ public actor UserRegistry {
 
     public func snapshot() -> [Member] {
         Array(members.values).sorted { $0.socketID < $1.socketID }
+    }
+
+    /// Snapshot filtered for peer-visibility: invisible members are
+    /// excluded unless the requester's own socket matches. Use this
+    /// for any wire-facing path (the `getUserList` (300) reply, the
+    /// `/who` chat command) so admins running `/invisible` actually
+    /// disappear from peers' rosters while still seeing themselves
+    /// in their own user-list.
+    public func snapshot(visibleTo viewer: UInt16?) -> [Member] {
+        members.values
+            .filter { !$0.isInvisible || $0.socketID == viewer }
+            .sorted { $0.socketID < $1.socketID }
     }
 
     /// Look up the live `ClientSession` for a given `socketID`, or

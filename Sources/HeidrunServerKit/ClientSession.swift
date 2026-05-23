@@ -56,6 +56,13 @@ public actor ClientSession {
     /// `applyAwayState` before the supervisor ever runs (or with the
     /// supervisor disabled outright) reads as not-idle.
     var idleAwayThreshold: TimeInterval = .greatestFiniteMagnitude
+    /// `true` when the session has run `/invisible` and hasn't gone
+    /// back to `/visible`. Hidden from peer user-list snapshots and
+    /// suppresses outbound `userChanged` broadcasts at the source so
+    /// status/nickname flips don't leak presence. The session is
+    /// still fully connected — chat works, file ops work, broadcasts
+    /// reach them — they just don't show up in others' rosters.
+    var isInvisible: Bool = false
     /// `true` when this session arrived on the TLS sibling listener
     /// (control port + 1 pair). Surfaced in the dispatch log + the
     /// 303 getClientInfoText profile so admins can confirm a user is
@@ -206,10 +213,16 @@ public actor ClientSession {
         ) else {
             return
         }
-        await registry.broadcast(
-            PacketEncoder.userChangedPush(member: updated, encoding: stringEncoding),
-            excluding: nil
-        )
+        // Suppress the userChanged broadcast while invisible — the
+        // status update still lands on the Member so the eventual
+        // `/visible` broadcast carries the current value, but no wire
+        // push leaks the session's presence in the meantime.
+        if !isInvisible {
+            await registry.broadcast(
+                PacketEncoder.userChangedPush(member: updated, encoding: stringEncoding),
+                excluding: nil
+            )
+        }
         awayBroadcast = isAway
         // Bumped to INFO: transitions are infrequent (one per session
         // per ~10 min in typical deployments) but operationally
@@ -568,7 +581,9 @@ public actor ClientSession {
     }
 
     private func handleUserList(header: PacketHeader) async {
-        let members = await registry.snapshot()
+        // Filter so invisible peers don't leak — except the requester
+        // always sees themselves in their own list.
+        let members = await registry.snapshot(visibleTo: socketID)
         let reply = PacketEncoder.userListReply(
             taskNumber: header.taskNumber,
             members: members,

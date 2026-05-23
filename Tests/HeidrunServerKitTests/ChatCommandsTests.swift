@@ -742,6 +742,150 @@ struct ChatCommandsTests {
         }
     }
 
+    // MARK: - /invisible + /visible
+
+    @Test("/invisible broadcasts userLeft and removes the admin from peers' user list")
+    func invisibleHidesFromPeers() async throws {
+        let configuration = ServerConfiguration(
+            port: 0,
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin", password: "admin", nickname: "Admin"
+            ),
+            idleAwayThreshold: nil
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let admin = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin",
+                loginName: "admin", password: "admin"
+            )
+            let bob = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Bob")
+            try await Task.sleep(for: .milliseconds(150))
+
+            // Capture admin's socketID from bob's perspective.
+            let pre = try await bob.fetchUserList()
+            let adminSocket = try #require(pre.first(where: { $0.nickname == "Admin" })?.socket)
+
+            // Bob expects a userLeft for admin's socket.
+            let leftWatcher = Task { () -> Bool in
+                for await event in bob.events {
+                    if case let .userLeft(socket) = event, socket == adminSocket {
+                        return true
+                    }
+                }
+                return false
+            }
+            try await admin.sendChat("/invisible", in: nil, isAction: false)
+
+            let saw: Bool = await withTaskGroup(of: Bool.self) { group in
+                group.addTask {
+                    try? await Task.sleep(for: .seconds(2))
+                    leftWatcher.cancel()
+                    return false
+                }
+                group.addTask { await leftWatcher.value }
+                let first = await group.next() ?? false
+                group.cancelAll()
+                return first
+            }
+            #expect(saw, "bob should receive userLeft for the invisible admin")
+
+            // Subsequent user-list request must omit the admin.
+            try await Task.sleep(for: .milliseconds(100))
+            let after = try await bob.fetchUserList()
+            #expect(!after.contains { $0.nickname == "Admin" })
+        }
+    }
+
+    @Test("/visible re-broadcasts userChanged so peers can re-add the row")
+    func visibleRestoresToPeers() async throws {
+        let configuration = ServerConfiguration(
+            port: 0,
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin", password: "admin", nickname: "Admin"
+            ),
+            idleAwayThreshold: nil
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let admin = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin",
+                loginName: "admin", password: "admin"
+            )
+            let bob = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Bob")
+            try await Task.sleep(for: .milliseconds(150))
+
+            try await admin.sendChat("/invisible", in: nil, isAction: false)
+            try await Task.sleep(for: .milliseconds(150))
+
+            async let restored = Self.awaitUserChanged(bob) { $0.nickname == "Admin" }
+            try await admin.sendChat("/visible", in: nil, isAction: false)
+
+            let user = try await restored
+            #expect(user.nickname == "Admin")
+
+            let after = try await bob.fetchUserList()
+            #expect(after.contains { $0.nickname == "Admin" })
+        }
+    }
+
+    @Test("invisible admin still sees themselves in their own /who")
+    func invisibleAdminSelfInWho() async throws {
+        let configuration = ServerConfiguration(
+            port: 0,
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin", password: "admin", nickname: "Admin"
+            ),
+            idleAwayThreshold: nil
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let admin = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin",
+                loginName: "admin", password: "admin"
+            )
+            let bob = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Bob")
+            try await Task.sleep(for: .milliseconds(150))
+
+            try await admin.sendChat("/invisible", in: nil, isAction: false)
+            try await Task.sleep(for: .milliseconds(150))
+
+            async let reply = Self.awaitChat(admin) { $0.contains("Connected users") }
+            try await admin.sendChat("/who", in: nil, isAction: false)
+
+            let block = try await reply
+            #expect(block.contains("Admin (socket="), "admin should always see themselves in /who")
+            #expect(block.contains("Bob (socket="))
+            _ = bob
+        }
+    }
+
+    @Test("/invisible from a guest is rejected; admin stays visible")
+    func invisibleGuestRejected() async throws {
+        let configuration = ServerConfiguration(
+            port: 0,
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin", password: "admin", nickname: "Admin"
+            ),
+            idleAwayThreshold: nil
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let admin = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin",
+                loginName: "admin", password: "admin"
+            )
+            let guest = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Guest")
+            try await Task.sleep(for: .milliseconds(150))
+
+            async let reply = Self.awaitChat(guest) { $0.contains("Permission denied") }
+            try await guest.sendChat("/invisible", in: nil, isAction: false)
+
+            let line = try await reply
+            #expect(line.contains("/invisible requires the disconnectUsers privilege"))
+
+            // Sanity: admin still in the roster.
+            let users = try await guest.fetchUserList()
+            #expect(users.contains { $0.nickname == "Admin" })
+        }
+    }
+
     // MARK: - Unknown / parser edges
 
     @Test("unknown /command replies privately and is never broadcast")
