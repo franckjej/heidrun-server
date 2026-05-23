@@ -6,6 +6,10 @@ DerivedData/
 .DS_Store
 .netrc
 
+# Local-only Claude / MCP config (per-checkout)
+.claude/
+.mcp.json
+
 # Local TLS test certs / Let's Encrypt copies
 /tls/
 *.pem
