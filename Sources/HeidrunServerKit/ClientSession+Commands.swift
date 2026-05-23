@@ -49,6 +49,16 @@ extension ClientSession {
             await handleAwayCommand(args: args)
         case "broadcast":
             await handleBroadcastCommand(args: args)
+        case "me":
+            await handleMeCommand(args: args)
+        case "who", "users":
+            await handleWhoCommand(args: args)
+        case "uptime":
+            await handleUptimeCommand(args: args)
+        case "kick":
+            await handleKickCommand(args: args)
+        case "help":
+            await handleHelpCommand(args: args)
         default:
             serverLogger.info("unknown chat command", metadata: [
                 "command": "\(command)",
@@ -102,6 +112,88 @@ extension ClientSession {
         manuallyAway.toggle()
         await applyAwayState()
         await sendSystemReply(manuallyAway ? "You are now away." : "Welcome back.")
+    }
+
+    /// `/me <action>` — IRC-style action chat. Broadcasts a 106 push
+    /// to every connected session (including the sender so they see
+    /// their own action) with `isAction=true` and a `* nickname action`
+    /// line that classic Hotline clients render as italicised /
+    /// asterisk-prefixed text. Empty bodies surface a usage hint.
+    func handleMeCommand(args: [String]) async {
+        let action = args.joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
+        guard !action.isEmpty else {
+            await sendSystemReply("Usage: /me <action>")
+            return
+        }
+        let line = " *\(nickname) \(action)\r"
+        let push = PacketEncoder.chatPush(line: line, isAction: true, encoding: stringEncoding)
+        await registry.broadcast(push, excluding: nil)
+    }
+
+    /// `/who` / `/users` — sender-only dump of the live roster with
+    /// each connected user's nickname + socketID so the operator has
+    /// the socket numbers handy for `/kick`.
+    func handleWhoCommand(args: [String]) async {
+        let members = await registry.snapshot()
+        var lines: [String] = ["Connected users (\(members.count)):"]
+        for member in members {
+            lines.append("  \(member.nickname) (socket=\(member.socketID))")
+        }
+        await sendSystemReply(lines: lines)
+    }
+
+    /// `/uptime` — sender-only one-liner with the server's uptime.
+    /// A focused subset of `/version` for operators who just want
+    /// the duration without the rest of the system block.
+    func handleUptimeCommand(args: [String]) async {
+        let uptime = HeidrunServerInfo.formatUptime(since: configuration.startedAt)
+        await sendSystemReply("uptime: \(uptime)")
+    }
+
+    /// `/kick <socketID>` — disconnect a target by socket. Gated on
+    /// `.disconnectUsers` (admin-only by default). Sugar for the
+    /// existing 110 transaction with a chat-friendly interface.
+    /// Self-kick is refused; unknown sockets get a sender-only
+    /// "no such user" reply.
+    func handleKickCommand(args: [String]) async {
+        guard hasPrivilege(.disconnectUsers) else {
+            await sendSystemReply("Permission denied: /kick requires the disconnectUsers privilege.")
+            return
+        }
+        guard let first = args.first, let target = UInt16(first) else {
+            await sendSystemReply("Usage: /kick <socketID>   (find IDs with /who)")
+            return
+        }
+        guard target != socketID else {
+            await sendSystemReply("Can't kick yourself.")
+            return
+        }
+        guard let session = await registry.lookup(socketID: target) else {
+            await sendSystemReply("No such user (socket=\(target)).")
+            return
+        }
+        let snapshot = await session.infoSnapshot()
+        await session.disconnectNow()
+        await sendSystemReply("Kicked \(snapshot.nickname) (socket=\(target)).")
+    }
+
+    /// `/help` — sender-only list of every command registered in this
+    /// dispatcher with a one-line description. Mirrors what's in the
+    /// README so a user inside the client can discover the full set
+    /// without leaving the chat window.
+    func handleHelpCommand(args: [String]) async {
+        await sendSystemReply(lines: [
+            "Available commands:",
+            "  /version            — server version, build, and runtime info",
+            "  /uptime             — show server uptime",
+            "  /who, /users        — list connected users",
+            "  /away               — toggle your away status",
+            "  /me <action>        — send an action chat line",
+            "  /broadcast <text>   — server-wide broadcast popup (admin)",
+            "  /kick <socketID>    — disconnect a user by socket (admin)",
+            "  /help               — show this list"
+        ])
     }
 
     /// `/broadcast <message>` — send a server-wide broadcast popup

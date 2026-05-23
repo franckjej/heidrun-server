@@ -458,6 +458,191 @@ struct ChatCommandsTests {
         }
     }
 
+    // MARK: - /me
+
+    @Test("/me broadcasts an action chat line to every session including the sender")
+    func meAction() async throws {
+        try await ServerTestHelpers.withRunningServer { _, port in
+            let alice = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Alice")
+            let bob = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Bob")
+            try await Task.sleep(for: .milliseconds(150))
+
+            async let bobLine = Self.awaitChat(bob) { $0.contains("waves") }
+            async let aliceLine = Self.awaitChat(alice) { $0.contains("waves") }
+
+            try await alice.sendChat("/me waves at Bob", in: nil, isAction: false)
+
+            let bobReceived = try await bobLine
+            let aliceReceived = try await aliceLine
+            // Mobius-style format: leading " *<nick> <action>".
+            #expect(bobReceived.contains("*Alice waves at Bob"))
+            #expect(aliceReceived.contains("*Alice waves at Bob"))
+        }
+    }
+
+    // MARK: - /who, /uptime, /help
+
+    @Test("/who lists every connected user with their socket id, sender-only")
+    func whoListsRoster() async throws {
+        try await ServerTestHelpers.withRunningServer { _, port in
+            let alice = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Alice")
+            let bob = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Bob")
+            try await Task.sleep(for: .milliseconds(150))
+
+            async let reply = Self.awaitChat(alice) { $0.contains("Connected users") }
+            async let bobSilent: Void = Self.expectNoChat(bob) { $0.contains("Connected users") }
+
+            try await alice.sendChat("/who", in: nil, isAction: false)
+
+            let block = try await reply
+            await bobSilent
+            #expect(block.contains("Connected users (2)"))
+            #expect(block.contains("Alice (socket="))
+            #expect(block.contains("Bob (socket="))
+        }
+    }
+
+    @Test("/uptime is a one-line sender-only reply")
+    func uptimeReply() async throws {
+        try await ServerTestHelpers.withRunningServer { _, port in
+            let alice = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Alice")
+            try await Task.sleep(for: .milliseconds(100))
+
+            async let reply = Self.awaitChat(alice) { $0.contains("uptime:") }
+            try await alice.sendChat("/uptime", in: nil, isAction: false)
+
+            let line = try await reply
+            #expect(line.contains("*** uptime:"))
+        }
+    }
+
+    @Test("/help lists every registered command")
+    func helpLists() async throws {
+        try await ServerTestHelpers.withRunningServer { _, port in
+            let alice = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Alice")
+            try await Task.sleep(for: .milliseconds(100))
+
+            async let reply = Self.awaitChat(alice) { $0.contains("Available commands") }
+            try await alice.sendChat("/help", in: nil, isAction: false)
+
+            let block = try await reply
+            for expected in ["/version", "/uptime", "/who", "/away", "/me", "/broadcast", "/kick", "/help"] {
+                #expect(block.contains(expected), "/help output should list \(expected)")
+            }
+        }
+    }
+
+    // MARK: - /kick
+
+    @Test("/kick from a canDisconnect holder boots the target; witnesses see userLeft")
+    func kickAdminPath() async throws {
+        let configuration = ServerConfiguration(
+            port: 0,
+            serverName: "Heidrun integration test",
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin",
+                password: "admin",
+                nickname: "Admin"
+            )
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let admin = try await ServerTestHelpers.connectAndLogin(
+                port: port,
+                nickname: "Admin",
+                loginName: "admin",
+                password: "admin"
+            )
+            let target = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Target")
+            let witness = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Witness")
+            try await Task.sleep(for: .milliseconds(150))
+
+            let users = try await witness.fetchUserList()
+            let targetSocket = try #require(users.first(where: { $0.nickname == "Target" })?.socket)
+
+            // Witness observes userLeft for the target's socket.
+            let leftWatcher = Task { () -> Bool in
+                for await event in witness.events {
+                    if case let .userLeft(socket) = event, socket == targetSocket {
+                        return true
+                    }
+                }
+                return false
+            }
+            async let confirmation = Self.awaitChat(admin) { $0.contains("Kicked Target") }
+
+            try await admin.sendChat("/kick \(targetSocket)", in: nil, isAction: false)
+
+            let kicked: Bool = await withTaskGroup(of: Bool.self) { group in
+                group.addTask {
+                    try? await Task.sleep(for: .seconds(2))
+                    leftWatcher.cancel()
+                    return false
+                }
+                group.addTask { await leftWatcher.value }
+                let first = await group.next() ?? false
+                group.cancelAll()
+                return first
+            }
+            let line = try await confirmation
+            #expect(kicked, "witness should see userLeft for the kicked socket")
+            #expect(line.contains("*** Kicked Target (socket=\(targetSocket))"))
+            _ = target  // silence the unused-binding warning; we don't query the kicked client
+        }
+    }
+
+    @Test("/kick from a guest is rejected; target stays connected")
+    func kickGuestRejected() async throws {
+        try await ServerTestHelpers.withRunningServer { _, port in
+            let guest = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Guest")
+            let bob = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Bob")
+            try await Task.sleep(for: .milliseconds(150))
+
+            let users = try await guest.fetchUserList()
+            let bobSocket = try #require(users.first(where: { $0.nickname == "Bob" })?.socket)
+
+            async let error = Self.awaitChat(guest) { $0.contains("Permission denied") }
+            try await guest.sendChat("/kick \(bobSocket)", in: nil, isAction: false)
+
+            let line = try await error
+            #expect(line.contains("/kick requires the disconnectUsers privilege"))
+
+            // Sanity: bob is still in the roster.
+            try await Task.sleep(for: .milliseconds(200))
+            let after = try await guest.fetchUserList()
+            #expect(after.contains { $0.nickname == "Bob" })
+        }
+    }
+
+    @Test("/kick refuses self-kick")
+    func kickSelfRefused() async throws {
+        let configuration = ServerConfiguration(
+            port: 0,
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin",
+                password: "admin",
+                nickname: "Admin"
+            )
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let admin = try await ServerTestHelpers.connectAndLogin(
+                port: port,
+                nickname: "Admin",
+                loginName: "admin",
+                password: "admin"
+            )
+            try await Task.sleep(for: .milliseconds(150))
+
+            let users = try await admin.fetchUserList()
+            let adminSocket = try #require(users.first(where: { $0.nickname == "Admin" })?.socket)
+
+            async let reply = Self.awaitChat(admin) { $0.contains("yourself") }
+            try await admin.sendChat("/kick \(adminSocket)", in: nil, isAction: false)
+
+            let line = try await reply
+            #expect(line.contains("*** Can't kick yourself."))
+        }
+    }
+
     // MARK: - Unknown / parser edges
 
     @Test("unknown /command replies privately and is never broadcast")

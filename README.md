@@ -570,8 +570,13 @@ never broadcast as chat, so only the sender sees the response.
 | command     | what it does                                                      |
 |-------------|-------------------------------------------------------------------|
 | `/version`  | private verbose system block: version, build id + date, Swift compiler version, platform, configured server name, listening ports (with TLS sibling pair when configured), uptime, live user count |
+| `/uptime`   | sender-only one-liner — `*** uptime: 4d 11h 23m` — a focused subset of `/version` |
+| `/who` / `/users` | sender-only roster dump: count + one line per user with their nickname and socket ID (so you have the IDs handy for `/kick`) |
 | `/away`     | toggles the `UserStatusFlags.away` bit immediately; broadcasts the new status to everyone via `userChanged` (301); confirms privately to the sender with `*** You are now away.` / `*** Welcome back.` |
+| `/me <action>` | IRC-style action chat. Broadcasts a 106 push to every session (sender included) with `isAction=true` and a mobius-style ` *<nick> <action>` line. Empty bodies surface `*** Usage: /me <action>`. |
 | `/broadcast <message>` | sends a server-wide broadcast popup (transID 355) to every connected session, including the sender so they see their own message as confirmation. Gated on the `.canBroadcast` privilege (admin-only by default). Guests / unprivileged accounts get a sender-only `*** Permission denied: …` reply. Empty bodies surface `*** Usage: /broadcast <message>`. |
+| `/kick <socketID>` | disconnects a target by their socket ID (find IDs with `/who`). Gated on the `.disconnectUsers` privilege (admin-only by default). Self-kick is refused, unknown sockets get a sender-only "no such user" reply, the kicked target's TCP connection is dropped, and every remaining session sees a `userLeft` (302). |
+| `/help`     | sender-only list of every registered command with a one-line description |
 
 Example `/version` reply (eight lines, joined by `\r` inside a single
 `chatPush`):
