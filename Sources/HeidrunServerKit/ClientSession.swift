@@ -295,10 +295,21 @@ public actor ClientSession {
     /// `false` to break out of the read loop (e.g. on a client-initiated
     /// disconnect transaction).
     private func dispatch(header: PacketHeader, fields: [PacketField]) async -> Bool {
-        // Bump activity for the idle-away supervisor. We do this even
-        // for pre-login frames so a slow handshake doesn't immediately
-        // count as idle once the session finally registers.
-        lastActivityAt = Date()
+        // Bump activity for the idle-away supervisor — but ONLY for
+        // user-driven transactions. Skip transID 500 (185-style ping)
+        // because clients send those automatically every ~60s as
+        // keepalive; counting them as activity prevents the supervisor
+        // from ever seeing a "truly idle" user. With a 600s default
+        // threshold and 60s client pings, idle-away would otherwise
+        // never fire in practice.
+        //
+        // Pre-login frames (socketID == 0) still bump so a slow
+        // handshake doesn't immediately count as idle once the session
+        // finally registers — the pre-login window is bounded by the
+        // client's handshake timeout, not the idle threshold.
+        if header.transactionID != 500 {
+            lastActivityAt = Date()
+        }
         // `socketID == 0` means we haven't called `registry.register`
         // yet — i.e. the session is still pre-login. Mask the
         // placeholder nickname + socket fields so the log doesn't
