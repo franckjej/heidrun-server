@@ -65,12 +65,25 @@ public actor HeidrunServer {
             // enforce server-side; the client UI gates many more
             // buttons on the full `UserPrivileges` set, and missing
             // bits look like "you don't have permission" in the client.
-            _ = try await accountStore.bootstrapIfEmpty(
+            let seeded = try await accountStore.bootstrapIfEmpty(
                 login: bootstrap.login,
                 password: bootstrap.password,
                 nickname: bootstrap.nickname,
                 permissions: UserPrivileges.all.rawValue
             )
+            if seeded {
+                serverLogger.info("bootstrap admin seeded", metadata: [
+                    "login": "\(bootstrap.login)",
+                    "permissions": "0x\(String(UserPrivileges.all.rawValue, radix: 16))"
+                ])
+            } else {
+                // Pre-existing row keeps its stored permissions — operators
+                // re-deploying on top of an older DB may have a stale admin
+                // missing privilege bits added after their first launch.
+                serverLogger.info("bootstrap admin skipped (accounts table not empty)", metadata: [
+                    "login": "\(bootstrap.login)"
+                ])
+            }
         }
         self.accounts = accountStore
 
@@ -212,6 +225,10 @@ public actor HeidrunServer {
         if let threshold = configuration.idleAwayThreshold, threshold > 0 {
             let pollSeconds = max(1, configuration.idleAwayPollInterval)
             let registrySnapshot = self.registry
+            serverLogger.info("idle-away supervisor started", metadata: [
+                "thresholdSeconds": "\(Int(threshold))",
+                "pollSeconds": "\(Int(pollSeconds))"
+            ])
             self.idleAwaySupervisor = Task {
                 while !Task.isCancelled {
                     try? await Task.sleep(for: .seconds(pollSeconds))
@@ -221,12 +238,21 @@ public actor HeidrunServer {
                     }
                 }
             }
+        } else {
+            serverLogger.info("idle-away supervisor disabled (threshold unset or 0)")
         }
 
         // Kick off tracker registration if the operator configured any.
         // The announcer captures a weak read of the registry through the
         // closure so it doesn't extend session lifetimes.
         if !configuration.trackers.isEmpty {
+            let trackerHosts = configuration.trackers
+                .map { "\($0.host):\($0.port)" }
+                .joined(separator: ",")
+            serverLogger.info("tracker configuration loaded", metadata: [
+                "count": "\(configuration.trackers.count)",
+                "hosts": "\(trackerHosts)"
+            ])
             let registrySnapshot = self.registry
             let announceDescription = configuration.trackerDescription ?? configuration.serverName
             let announcer = TrackerAnnouncer(
@@ -243,6 +269,12 @@ public actor HeidrunServer {
             )
             self.trackerAnnouncer = announcer
             await announcer.start()
+        } else {
+            // No announcer instantiated → the announcer's own "skipping"
+            // DEBUG log never fires. Surface the same fact here so the
+            // operator can tell at INFO that HEIDRUN_TRACKERS / the TOML
+            // `trackers` array reached the process empty.
+            serverLogger.info("tracker announcer disabled (no trackers configured)")
         }
 
         return boundPort

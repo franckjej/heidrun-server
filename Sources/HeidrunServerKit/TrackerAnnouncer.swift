@@ -108,7 +108,7 @@ public actor TrackerAnnouncer {
             let packet = TrackerRegistrationCodec.encode(registration)
             do {
                 try await send(tracker, packet)
-                serverLogger.debug("tracker registered", metadata: [
+                serverLogger.info("tracker registered", metadata: [
                     "tracker": "\(tracker.host):\(tracker.port)",
                     "userCount": "\(userCount)",
                     "bytes": "\(packet.count)"

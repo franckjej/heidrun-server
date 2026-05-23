@@ -37,7 +37,7 @@ public actor ClientSession {
     /// Last time we processed an inbound packet from this session. The
     /// idle-away supervisor reads this to decide when to flip the
     /// `.away` flag on the broadcast user record.
-    var lastActivityAt: Date = Date()
+    var lastActivityAt = Date()
     /// Cached "did we already broadcast this session as away" flag.
     /// Used by `reconcileAwayState` to skip redundant broadcasts.
     var awayBroadcast: Bool = false
@@ -430,7 +430,10 @@ public actor ClientSession {
             "nickname": "\(nick)",
             "login": "\(login.isEmpty ? "guest" : login)",
             "remoteHost": "\(remoteHost ?? "—")",
-            "tls": "\(isTLS)"
+            "tls": "\(isTLS)",
+            "isAdmin": "\(authenticatedAccount?.isAdmin ?? false)",
+            "status": "0x\(String(initialStatus, radix: 16))",
+            "permissions": "0x\(String(authenticatedAccount?.permissions ?? 0, radix: 16))"
         ])
 
         let reply = PacketEncoder.loginReply(
