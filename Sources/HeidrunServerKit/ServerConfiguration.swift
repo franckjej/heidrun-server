@@ -83,6 +83,13 @@ public struct ServerConfiguration: Sendable {
     /// consulted when `idleAwayThreshold` is set.
     public var idleAwayPollInterval: TimeInterval
 
+    /// Wall-clock timestamp the configuration was constructed. Used
+    /// by the `/version` chat command as a stand-in for "server
+    /// start time" when computing the uptime line — close enough to
+    /// process start in practice (configs are loaded immediately
+    /// before `HeidrunServer.start()`).
+    public var startedAt: Date
+
     public init(
         port: UInt16 = 5500,
         bindHost: String = "0.0.0.0",
@@ -103,7 +110,8 @@ public struct ServerConfiguration: Sendable {
         bannerPath: String? = nil,
         bannerKind: HeidrunCore.ServerBanner.Kind = .jpeg,
         idleAwayThreshold: TimeInterval? = 600,
-        idleAwayPollInterval: TimeInterval = 60
+        idleAwayPollInterval: TimeInterval = 60,
+        startedAt: Date = Date()
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -125,5 +133,6 @@ public struct ServerConfiguration: Sendable {
         self.bannerKind = bannerKind
         self.idleAwayThreshold = idleAwayThreshold
         self.idleAwayPollInterval = idleAwayPollInterval
+        self.startedAt = startedAt
     }
 }

@@ -58,17 +58,38 @@ extension ClientSession {
         return true
     }
 
-    /// `/version` — sender-only two-line reply with the running
-    /// HeidrunServer's semver and build identifier.
+    /// `/version` — sender-only verbose system block. Eight lines:
+    /// semver, build (id + optional date), Swift compiler version,
+    /// platform, configured server name, listening ports (with TLS
+    /// sibling pair when configured), uptime, live user count.
     func handleVersionCommand(args: [String]) async {
         let identifier = HeidrunServerInfo.buildIdentifier
         let buildDate = HeidrunServerInfo.buildDate
         let buildLine = buildDate.isEmpty
             ? "build: \(identifier)"
             : "build: \(identifier) (\(buildDate))"
+
+        let portsLine: String = {
+            let cleartextPort = configuration.port
+            let cleartextPair = "\(cleartextPort)/\(cleartextPort + 1)"
+            guard let tlsPort = configuration.tlsPort else {
+                return "ports: \(cleartextPair)"
+            }
+            return "ports: \(cleartextPair) (TLS \(tlsPort)/\(tlsPort + 1))"
+        }()
+
+        let userCount = await registry.snapshot().count
+        let uptime = HeidrunServerInfo.formatUptime(since: configuration.startedAt)
+
         await sendSystemReply(lines: [
             "HeidrunServer \(HeidrunServerInfo.version)",
-            buildLine
+            buildLine,
+            "swift: \(HeidrunServerInfo.swiftCompilerVersion)",
+            "platform: \(HeidrunServerInfo.platformDescription)",
+            "server: \(configuration.serverName)",
+            portsLine,
+            "uptime: \(uptime)",
+            "users: \(userCount)"
         ])
     }
 

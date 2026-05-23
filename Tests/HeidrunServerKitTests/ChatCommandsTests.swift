@@ -154,6 +154,40 @@ struct ChatCommandsTests {
         }
     }
 
+    @Test("/version verbose block carries swift / platform / server / ports / uptime / users")
+    func versionVerboseBlock() async throws {
+        let configuration = ServerConfiguration(
+            port: 0,
+            serverName: "TestServerName"
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let alice = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Alice")
+            try await Task.sleep(for: .milliseconds(100))
+
+            // Wait until the reply has all the trailing lines — the
+            // multi-line response arrives in one chatPush so this is a
+            // single event with embedded \r separators.
+            async let reply = Self.awaitChat(alice) { message in
+                message.contains("users:")
+                    && message.contains("uptime:")
+                    && message.contains("swift:")
+            }
+            try await alice.sendChat("/version", in: nil, isAction: false)
+
+            let block = try await reply
+            #expect(block.contains("HeidrunServer \(HeidrunServerInfo.version)"))
+            #expect(block.contains("swift: \(HeidrunServerInfo.swiftCompilerVersion)"))
+            #expect(block.contains("platform: "))
+            #expect(block.contains("server: TestServerName"))
+            // OS-picked port so we can't predict the number — just
+            // assert the line shape.
+            #expect(block.contains("ports: "))
+            #expect(block.contains("uptime: "))
+            // Just Alice connected at this moment.
+            #expect(block.contains("users: 1"))
+        }
+    }
+
     @Test("/version strips control bytes from a malformed build stamp")
     func versionStripsControlBytes() async throws {
         // Embed a literal newline in the stamp. The sanitiser must

@@ -6,15 +6,37 @@
 shipping with two commands: `/version` and `/away`. Designed for
 extension — adding a third command is one new method + one switch arm.
 
-**Post-implementation amendment (2026-05-23):** The system-reply
-prefix was changed from `« ` (U+00AB, MacRoman 0xC7) to `*** `
-(plain ASCII) during first deploy. The non-ASCII prefix didn't
-round-trip cleanly through the Linux server's
-`String.data(using: .macOSRoman)` path on at least one client/server
-combination — the receiver rendered the prefix as `â` instead of
-the expected `«`. ASCII is robust against any encoding-decoder
-mismatch and was a stylistic choice anyway. All references below
-showing `« ` should be read as `*** ` in the shipped code.
+**Post-implementation amendments (2026-05-23):**
+
+1. **System-reply prefix:** changed from `« ` (U+00AB, MacRoman 0xC7)
+   to `*** ` (plain ASCII). The non-ASCII prefix didn't round-trip
+   cleanly through the Linux server's
+   `String.data(using: .macOSRoman)` path on at least one client/server
+   combination — the receiver rendered the prefix as `â` instead of
+   `«`. ASCII removes the failure mode and was a stylistic choice
+   anyway. References to `« ` below should be read as `*** `.
+
+2. **`/version` expanded to a verbose system block.** First deploy
+   surfaced that the two-line "version + build" payload (the option
+   chosen during brainstorm) felt skimpy in practice. Expanded to
+   eight lines: version, build, Swift compiler version, platform
+   (Linux `PRETTY_NAME` or macOS version), configured server name,
+   listening ports (with TLS sibling pair when configured), process
+   uptime (`Xd Yh Zm` format), and live user count.
+
+   New plumbing for the extra fields:
+   - `HeidrunServerInfo.swiftCompilerVersion` — Swift compile-time
+     `#if swift(>=X.Y)` ladder, no env stamping needed.
+   - `HeidrunServerInfo.platformDescription` — Linux reads
+     `/etc/os-release` `PRETTY_NAME`; macOS uses
+     `ProcessInfo.processInfo.operatingSystemVersion`.
+   - `HeidrunServerInfo.formatUptime(since:)` — hand-rolled
+     `Xd Yh Zm` formatter (trims leading zero units).
+   - `ServerConfiguration.startedAt: Date = Date()` — captured at
+     config construction, used as the uptime baseline.
+   - `/version` handler reads `await registry.snapshot().count` for
+     the live user count and `configuration.port` / `configuration.tlsPort`
+     for the ports line.
 
 ## Context
 

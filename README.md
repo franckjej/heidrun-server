@@ -569,8 +569,22 @@ never broadcast as chat, so only the sender sees the response.
 
 | command    | what it does                                                      |
 |------------|-------------------------------------------------------------------|
-| `/version` | private two-line reply: `*** HeidrunServer X.Y.Z` + `*** build: …`     |
+| `/version` | private verbose system block: version, build id + date, Swift compiler version, platform, configured server name, listening ports (with TLS sibling pair when configured), uptime, live user count |
 | `/away`    | toggles the `UserStatusFlags.away` bit immediately; broadcasts the new status to everyone via `userChanged` (301); confirms privately to the sender with `*** You are now away.` / `*** Welcome back.` |
+
+Example `/version` reply (eight lines, joined by `\r` inside a single
+`chatPush`):
+
+```
+*** HeidrunServer 0.7.0
+*** build: a1b2c3d (2026-05-23)
+*** swift: 6.2
+*** platform: Linux Ubuntu 22.04.4 LTS
+*** server: HeidrunsInn
+*** ports: 5500/5501 (TLS 5502/5503)
+*** uptime: 4d 11h 23m
+*** users: 3
+```
 
 Parser specifics:
 
