@@ -34,6 +34,13 @@ public actor ClientSession {
     /// Wall-clock timestamp of the successful login. `nil` while still
     /// in handshake / pre-auth.
     var loginAt: Date?
+    /// Last time we processed an inbound packet from this session. The
+    /// idle-away supervisor reads this to decide when to flip the
+    /// `.away` flag on the broadcast user record.
+    var lastActivityAt: Date = Date()
+    /// Cached "did we already broadcast this session as away" flag.
+    /// Used by `reconcileAwayState` to skip redundant broadcasts.
+    var awayBroadcast: Bool = false
     /// `true` when this session arrived on the TLS sibling listener
     /// (control port + 1 pair). Surfaced in the dispatch log + the
     /// 303 getClientInfoText profile so admins can confirm a user is
@@ -121,6 +128,39 @@ public actor ClientSession {
         await closer()
     }
 
+    /// Idle-away supervisor callback. If the session has been inactive
+    /// for at least `threshold` seconds, set the `.away` flag on its
+    /// broadcast user record. When activity resumes (lastActivityAt
+    /// moves forward of the threshold) clear the flag. Both transitions
+    /// fan out a `userChanged` (301) push so every client sees the
+    /// state change.
+    ///
+    /// Skips pre-login sessions (`socketID == 0`) — those aren't in
+    /// the registry yet and have nothing to broadcast.
+    public func reconcileAwayState(threshold: TimeInterval) async {
+        guard socketID != 0 else { return }
+        let isIdle = Date().timeIntervalSince(lastActivityAt) >= threshold
+        if isIdle == awayBroadcast { return }
+
+        let baseStatus = authenticatedAccount.initialHotStatus
+        let awayBit: UInt16 = 1 << 0
+        let newStatus: UInt16 = isIdle ? (baseStatus | awayBit) : baseStatus
+        guard let updated = await registry.updateMemberStatus(socketID: socketID, status: newStatus) else {
+            return
+        }
+        await registry.broadcast(
+            PacketEncoder.userChangedPush(member: updated, encoding: stringEncoding),
+            excluding: nil
+        )
+        awayBroadcast = isIdle
+        serverLogger.debug("idle away reconcile", metadata: [
+            "socketID": "\(socketID)",
+            "nickname": "\(nickname)",
+            "isIdle": "\(isIdle)",
+            "idleSeconds": "\(Int(Date().timeIntervalSince(lastActivityAt)))"
+        ])
+    }
+
     /// Drive the connection from raw inbound bytes through handshake,
     /// frame loop, and clean disconnect. Returns when the client
     /// disconnects (gracefully or not).
@@ -195,6 +235,10 @@ public actor ClientSession {
     /// `false` to break out of the read loop (e.g. on a client-initiated
     /// disconnect transaction).
     private func dispatch(header: PacketHeader, fields: [PacketField]) async -> Bool {
+        // Bump activity for the idle-away supervisor. We do this even
+        // for pre-login frames so a slow handshake doesn't immediately
+        // count as idle once the session finally registers.
+        lastActivityAt = Date()
         // `socketID == 0` means we haven't called `registry.register`
         // yet — i.e. the session is still pre-login. Mask the
         // placeholder nickname + socket fields so the log doesn't

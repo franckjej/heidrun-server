@@ -74,6 +74,15 @@ public struct ServerConfiguration: Sendable {
     /// GIF / BMP / PICT / URL deployments.
     public var bannerKind: HeidrunCore.ServerBanner.Kind
 
+    /// Seconds of inbound-packet inactivity before a session flips to
+    /// `UserStatusFlags.away` in the broadcast user record. Cleared on
+    /// the next packet. `nil` disables idle auto-away.
+    public var idleAwayThreshold: TimeInterval?
+
+    /// How often the idle-away supervisor walks the session list. Only
+    /// consulted when `idleAwayThreshold` is set.
+    public var idleAwayPollInterval: TimeInterval
+
     public init(
         port: UInt16 = 5500,
         bindHost: String = "0.0.0.0",
@@ -92,7 +101,9 @@ public struct ServerConfiguration: Sendable {
         tlsCertificatePath: String? = nil,
         tlsPrivateKeyPath: String? = nil,
         bannerPath: String? = nil,
-        bannerKind: HeidrunCore.ServerBanner.Kind = .jpeg
+        bannerKind: HeidrunCore.ServerBanner.Kind = .jpeg,
+        idleAwayThreshold: TimeInterval? = 600,
+        idleAwayPollInterval: TimeInterval = 60
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -112,5 +123,7 @@ public struct ServerConfiguration: Sendable {
         self.tlsPrivateKeyPath = tlsPrivateKeyPath
         self.bannerPath = bannerPath
         self.bannerKind = bannerKind
+        self.idleAwayThreshold = idleAwayThreshold
+        self.idleAwayPollInterval = idleAwayPollInterval
     }
 }

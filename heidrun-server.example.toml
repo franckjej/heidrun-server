@@ -6,7 +6,8 @@
 # HEIDRUN_ADMIN_NICKNAME, HEIDRUN_SERVER_NAME, HEIDRUN_AGREEMENT,
 # HEIDRUN_LOG_LEVEL, HEIDRUN_TRACKERS, HEIDRUN_TRACKER_DESCRIPTION,
 # HEIDRUN_TLS_PORT, HEIDRUN_TLS_CERTIFICATE, HEIDRUN_TLS_PRIVATE_KEY,
-# HEIDRUN_BANNER_PATH, HEIDRUN_BANNER_KIND) override whatever is set here.
+# HEIDRUN_BANNER_PATH, HEIDRUN_BANNER_KIND,
+# HEIDRUN_IDLE_AWAY_THRESHOLD, HEIDRUN_IDLE_AWAY_POLL) override whatever is set here.
 #
 # Every key is optional; missing keys fall back to built-in defaults.
 
@@ -91,3 +92,13 @@ nickname = "Admin"
 # link the client fetches itself.
 # banner_path = "/etc/heidrun-server/banner.jpg"
 # banner_kind = "jpeg"
+
+# Idle auto-away. After `idle_away_threshold` seconds of no inbound
+# packets from a session, the server flips its UserStatusFlags.away
+# bit and broadcasts userChanged so other clients dim that row. The
+# next packet from the session clears it again. The supervisor
+# walks the live session list every `idle_away_poll_interval`
+# seconds. Set the threshold to 0 (or omit) to disable.
+# Defaults: 600 seconds idle, 60 second poll.
+# idle_away_threshold = 600
+# idle_away_poll_interval = 60

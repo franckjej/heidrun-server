@@ -21,6 +21,7 @@ public actor HeidrunServer {
     private var tlsControlChannel: (any Channel)?
     private var tlsTransferChannel: (any Channel)?
     private var trackerAnnouncer: TrackerAnnouncer?
+    private var idleAwaySupervisor: Task<Void, Never>?
 
     public init(
         configuration: ServerConfiguration,
@@ -203,6 +204,25 @@ public actor HeidrunServer {
             boundTLSPort = 0
         }
 
+        // Kick off the idle-away supervisor. Walks the live session
+        // list on a timer and flips the `.away` flag on members who
+        // haven't sent a packet in `idleAwayThreshold` seconds — the
+        // standard "auto-away" behaviour from classic Hotline servers.
+        // `nil` threshold disables the loop entirely.
+        if let threshold = configuration.idleAwayThreshold, threshold > 0 {
+            let pollSeconds = max(1, configuration.idleAwayPollInterval)
+            let registrySnapshot = self.registry
+            self.idleAwaySupervisor = Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(for: .seconds(pollSeconds))
+                    let sessions = await registrySnapshot.liveSessions()
+                    for (_, session) in sessions {
+                        await session.reconcileAwayState(threshold: threshold)
+                    }
+                }
+            }
+        }
+
         // Kick off tracker registration if the operator configured any.
         // The announcer captures a weak read of the registry through the
         // closure so it doesn't extend session lifetimes.
@@ -230,6 +250,8 @@ public actor HeidrunServer {
 
     public func stop() async {
         serverLogger.info("HeidrunServer stopping")
+        idleAwaySupervisor?.cancel()
+        idleAwaySupervisor = nil
         if let trackerAnnouncer {
             await trackerAnnouncer.stop()
         }

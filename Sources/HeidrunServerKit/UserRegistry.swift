@@ -62,6 +62,28 @@ public actor UserRegistry {
         return existing
     }
 
+    /// Patch only the two-byte `hotStatus` on an existing member.
+    /// Returns the updated `Member` so the caller can fan out a
+    /// `userChanged` (301) push. Used by the idle-away supervisor.
+    @discardableResult
+    public func updateMemberStatus(socketID: UInt16, status: UInt16) -> Member? {
+        guard var existing = members[socketID] else { return nil }
+        existing.status = status
+        members[socketID] = existing
+        return existing
+    }
+
+    /// All currently-registered `ClientSession` instances, paired with
+    /// their socket IDs. Used by background supervisors (idle-away)
+    /// that need to inspect or update per-session state without going
+    /// through the broadcast path.
+    public func liveSessions() -> [(socketID: UInt16, session: ClientSession)] {
+        sessions.compactMap { socket, weakSession in
+            guard let session = weakSession.value else { return nil }
+            return (socket, session)
+        }
+    }
+
     public func snapshot() -> [Member] {
         Array(members.values).sorted { $0.socketID < $1.socketID }
     }

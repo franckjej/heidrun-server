@@ -53,6 +53,14 @@ public struct ServerConfigurationFile: Codable, Sendable {
     /// `"url"`, `"jpeg"`, `"gif"`, `"bmp"`, `"pict"`. Defaults to
     /// "jpeg" when the field is omitted but `banner_path` is set.
     public var bannerKind: String?
+    /// Seconds of inbound-packet inactivity before a session flips to
+    /// the `.away` flag on its broadcast user record. Cleared on the
+    /// next packet. `0` (or omitted-then-0) disables idle auto-away.
+    /// Defaults to 600 (10 minutes).
+    public var idleAwayThreshold: Int?
+    /// How often (seconds) the supervisor walks the live session list.
+    /// Defaults to 60.
+    public var idleAwayPollInterval: Int?
 
     public struct BootstrapAdminFile: Codable, Sendable {
         public var login: String?
@@ -86,7 +94,9 @@ public struct ServerConfigurationFile: Codable, Sendable {
         tlsCertificate: String? = nil,
         tlsPrivateKey: String? = nil,
         bannerPath: String? = nil,
-        bannerKind: String? = nil
+        bannerKind: String? = nil,
+        idleAwayThreshold: Int? = nil,
+        idleAwayPollInterval: Int? = nil
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -104,6 +114,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
         self.tlsPrivateKey = tlsPrivateKey
         self.bannerPath = bannerPath
         self.bannerKind = bannerKind
+        self.idleAwayThreshold = idleAwayThreshold
+        self.idleAwayPollInterval = idleAwayPollInterval
     }
 
     enum CodingKeys: String, CodingKey {
@@ -123,6 +135,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
         case tlsPrivateKey = "tls_private_key"
         case bannerPath = "banner_path"
         case bannerKind = "banner_kind"
+        case idleAwayThreshold = "idle_away_threshold"
+        case idleAwayPollInterval = "idle_away_poll_interval"
     }
 
     public enum LoadError: Swift.Error, Equatable {
@@ -236,6 +250,28 @@ public struct ServerConfigurationFile: Codable, Sendable {
             }
         }()
 
+        // Idle-away — env wins over file. `0` disables; defaults to
+        // the built-in (`ServerConfiguration.init`) values when nothing
+        // is set anywhere.
+        let resolvedIdleThreshold: TimeInterval? = {
+            if let raw = environment["HEIDRUN_IDLE_AWAY_THRESHOLD"], let parsed = Int(raw) {
+                return parsed > 0 ? TimeInterval(parsed) : nil
+            }
+            if let fileValue = idleAwayThreshold {
+                return fileValue > 0 ? TimeInterval(fileValue) : nil
+            }
+            return 600
+        }()
+        let resolvedIdlePoll: TimeInterval = {
+            if let raw = environment["HEIDRUN_IDLE_AWAY_POLL"], let parsed = Int(raw), parsed > 0 {
+                return TimeInterval(parsed)
+            }
+            if let fileValue = idleAwayPollInterval, fileValue > 0 {
+                return TimeInterval(fileValue)
+            }
+            return 60
+        }()
+
         return ServerConfiguration(
             port: resolvedPort,
             bindHost: resolvedBindHost,
@@ -251,7 +287,9 @@ public struct ServerConfigurationFile: Codable, Sendable {
             tlsCertificatePath: resolvedTLSCertificate,
             tlsPrivateKeyPath: resolvedTLSPrivateKey,
             bannerPath: resolvedBannerPath,
-            bannerKind: resolvedBannerKind
+            bannerKind: resolvedBannerKind,
+            idleAwayThreshold: resolvedIdleThreshold,
+            idleAwayPollInterval: resolvedIdlePoll
         )
     }
 }
