@@ -157,6 +157,44 @@ seeds an account with `HEIDRUN_ADMIN_LOGIN` / `HEIDRUN_ADMIN_PASSWORD`
 the `modifyLogin` (transID 353) admin transaction from any logged-in
 client with the `modifyAccounts` privilege.
 
+### Upgrading admin permissions on an older DB
+
+Since May 22 2026 the bootstrap admin is seeded with **every defined
+privilege bit** (`UserPrivileges.all`). Earlier builds only seeded the
+five bits the server enforces directly (`createAccounts`,
+`deleteAccounts`, `readAccounts`, `modifyAccounts`, `disconnectUsers`),
+which is enough to administer accounts but leaves the admin missing
+upload, download, file ops, news, and — most visibly — the
+`disconnectUsers` flag that drives the admin-name-red colour in
+clients. If your deployment predates that change, the bootstrap
+admin row stays untouched on subsequent restarts (the seed only runs
+against an empty accounts table), so an `admin` user logging in shows
+`isAdmin=false status=0x0` in the new login log line.
+
+Three ways to bring the admin row up to date:
+
+1. **From a connected admin client** (preferred). Connect as `admin`,
+   use the Edit Account UI / `modifyLogin` (transID 353) to grant the
+   missing bits. The current admin still holds `modifyAccounts`, so
+   this works without any server-side change. Re-login to see the
+   red name colour pick up.
+2. **Direct SQL** against the SQLite DB (server stopped):
+   ```bash
+   docker compose stop heidrun
+   sqlite3 /var/lib/docker/volumes/heidrun-server_heidrun-data/_data/heidrun.sqlite \
+     "UPDATE accounts SET permissions = 2199022731263 WHERE login = 'admin';"
+   docker compose start heidrun
+   ```
+   `2199022731263` is `0x1FFFF7FFFFF` — `UserPrivileges.all.rawValue`
+   as of this commit (bits 0–18, 20–40; bit 19 is unused in the
+   classic Hotline protocol). If new bits get added upstream the
+   value changes; spin up a fresh DB once and read the exact hex
+   from the `bootstrap admin seeded permissions=0x…` log line.
+3. **Drop the volume and re-seed** — *only* if the deployment is
+   still effectively empty (no real account history, news, or files
+   you care about). `docker compose down -v && docker compose up -d`
+   wipes the volume and fires the seed afresh.
+
 ### Ports
 
 The server binds two adjacent TCP ports: `port` (Hotline control) and
@@ -334,6 +372,63 @@ both a cert path and a key path throws at startup with a typed
 `TLSContextError.loadFailed(reason: …)` instead of silently falling
 back to cleartext — so an operator who thought they had TLS can't
 end up with an unencrypted listener by accident.
+
+### Tracker registration
+
+When `HEIDRUN_TRACKERS` (or the TOML `trackers = […]` array) is set,
+the server sends one mobius-compatible UDP datagram to each configured
+tracker every 5 minutes. The packet advertises this server's name,
+description, control port, live user count, and an optional
+tracker-side password. Browsing Hotline clients then fetch the list
+from the tracker and connect to whatever servers appear in it.
+
+**Verifying the announcer is running.** The boot log carries three
+INFO lines that tell you what the process actually picked up:
+
+```
+tracker configuration loaded   count=N hosts=...
+tracker announcer starting     trackers=N
+tracker registered             tracker=hltracker.com:5498 bytes=NN  (every 5 min)
+```
+
+If you see `tracker announcer disabled (no trackers configured)`
+instead, `HEIDRUN_TRACKERS` didn't reach the process. Verify the env
+var inside the container — env vars set in `docker-compose.yml` only
+take effect after a `docker compose up -d --build` (or at least
+`docker compose up -d`) cycle:
+
+```bash
+docker exec heidrun-server env | grep TRACK
+```
+
+**ufw + ufw-docker.** The announcer runs inside the container and
+sends outbound UDP to `tracker-host:5498`. ufw's default outbound
+policy is allow, but `ufw-docker`'s `after.rules` block can restrict
+container egress in setups that have been hardened. `bytes=NN` in the
+log only confirms the kernel accepted the write — not that the packet
+left the host. If registrations are succeeding from the server's
+perspective but the server doesn't appear in tracker listings, capture
+on the host to confirm the datagram actually goes out:
+
+```bash
+sudo tcpdump -i any -n udp port 5498
+# wait up to 5 min for the next cycle (or restart the container to
+# force an immediate first send).
+```
+
+A successful send shows one outbound UDP packet from the host's
+public IP to the tracker. No packet on the wire = ufw / ufw-docker /
+the docker bridge is dropping it; allow outbound UDP to port 5498
+from the docker network's CIDR.
+
+**Server reachability.** Trackers hand `advertisedPort` (your
+`HEIDRUN_PORT`, default 5500) back to browsing clients, who then
+dial `your-public-IP:5500`. If port 5500 / 5501 aren't reachable from
+the public internet (firewall, ufw-docker without the matching
+allow), clients will see the listing but fail to connect — symptoms
+look identical to "we don't get listed" from a user's perspective.
+Open 5500/5501 (and 5502/5503 if TLS is on) inbound the same way as
+described in the Ports section above.
 
 ### State directories
 
