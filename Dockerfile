@@ -24,6 +24,15 @@
 
 # syntax=docker/dockerfile:1.6
 
+# Build-time stamps surfaced by the `/version` chat command at runtime.
+# Defaults yield "dev" / empty so unstamped local builds still produce a
+# valid binary; CI / release pipelines pass real values:
+#
+#   --build-arg GIT_REV="$(git rev-parse --short HEAD)"
+#   --build-arg BUILD_DATE="$(date -u +%Y-%m-%d)"
+ARG GIT_REV=dev
+ARG BUILD_DATE=
+
 # ──────────────────────────────────────────────────────────────────────────────
 # Build stage
 # ──────────────────────────────────────────────────────────────────────────────
@@ -100,10 +109,17 @@ COPY heidrun-server.example.toml /etc/heidrun-server/config.toml
 USER heidrun
 WORKDIR /var/lib/heidrun
 
+# Re-declare the build args in this stage so the ENV stamps below can
+# reference them (multi-stage builds don't inherit ARGs from globals).
+ARG GIT_REV
+ARG BUILD_DATE
+
 ENV HEIDRUN_CONFIG=/etc/heidrun-server/config.toml \
     HEIDRUN_DB_PATH=/var/lib/heidrun/heidrun.sqlite \
     HEIDRUN_FILES_ROOT=/var/lib/heidrun/files \
-    HEIDRUN_LOG_LEVEL=info
+    HEIDRUN_LOG_LEVEL=info \
+    HEIDRUN_BUILD=${GIT_REV} \
+    HEIDRUN_BUILD_DATE=${BUILD_DATE}
 
 EXPOSE 5500 5501
 

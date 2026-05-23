@@ -103,6 +103,27 @@ swift build --configuration release
 ls .build/release/HeidrunServer
 ```
 
+### Stamping the build identifier
+
+The running server surfaces a semver + short build identifier via the
+`/version` chat command (and the `bootstrap admin seeded` log line at
+startup). Two environment variables control the build metadata that
+gets baked into the Docker image:
+
+```bash
+HEIDRUN_BUILD="$(git rev-parse --short HEAD)" \
+HEIDRUN_BUILD_DATE="$(date -u +%Y-%m-%d)" \
+DOCKER_BUILDKIT=1 GH_TOKEN="$(gh auth token)" \
+  docker compose up -d --build
+```
+
+The compose file forwards both into the Dockerfile as `--build-arg`s,
+which the runtime stage re-exports as `HEIDRUN_BUILD` / `HEIDRUN_BUILD_DATE`
+env vars. Unstamped local `swift run` users see `build: dev` and the
+parenthetical date is omitted. Malformed values (e.g. an env var that
+got a stray newline) are sanitised before they reach the wire so the
+multi-line `/version` reply can't be corrupted.
+
 ## Configuration
 
 Two layered sources: **env vars override the TOML file, which overrides
@@ -539,6 +560,33 @@ restart heidrun` (same workflow as the TLS cert).
   + 1, or TLS sibling + 1 when TLS is on), with a banner-flavoured
   preamble (`type=2`) so the dispatcher can distinguish it from a
   regular file stream.
+
+### Chat slash commands
+
+Users can issue server commands by typing them into the public chat
+input. Slash-prefixed lines are intercepted server-side — they are
+never broadcast as chat, so only the sender sees the response.
+
+| command    | what it does                                                      |
+|------------|-------------------------------------------------------------------|
+| `/version` | private two-line reply: `« HeidrunServer X.Y.Z` + `« build: …`     |
+| `/away`    | toggles the `UserStatusFlags.away` bit immediately; broadcasts the new status to everyone via `userChanged` (301); confirms privately to the sender with `« You are now away.` / `« Welcome back.` |
+
+Parser specifics:
+
+- Single-`/` prefix only. `//emph` and a bare `/` fall through as
+  normal chat.
+- Case-insensitive on the command head — `/Version`, `/AWAY` work.
+- Unknown `/foo` produces a sender-only `« Unknown command: /foo`
+  reply; nothing is broadcast.
+- Whitespace is trimmed; extra tokens after a known command are
+  silently ignored.
+
+The manual `/away` flag and the idle-away supervisor share a single
+reconciliation path (`applyAwayState`) on each session, so they can
+never disagree on the broadcast wire state — a manually-away user
+stays away across active packets, and the supervisor doesn't
+double-broadcast.
 
 ## Tested deployment images
 

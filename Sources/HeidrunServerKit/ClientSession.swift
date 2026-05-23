@@ -39,8 +39,23 @@ public actor ClientSession {
     /// `.away` flag on the broadcast user record.
     var lastActivityAt = Date()
     /// Cached "did we already broadcast this session as away" flag.
-    /// Used by `reconcileAwayState` to skip redundant broadcasts.
+    /// Used by `applyAwayState` to skip redundant broadcasts. Tracks
+    /// the *combined* (idle || manual) state — see `applyAwayState`.
     var awayBroadcast: Bool = false
+    /// `true` when the user explicitly ran `/away` and hasn't toggled
+    /// it off. OR'd with the idle-derived state to produce the
+    /// effective away bit broadcast to peers, so a manually-away
+    /// session stays away even when the supervisor would otherwise
+    /// clear the flag on the next active packet.
+    var manuallyAway: Bool = false
+    /// Inactivity threshold (seconds) the idle supervisor last passed
+    /// to `reconcileAwayState`. Cached on the session so
+    /// `applyAwayState` — called from both the supervisor and the
+    /// `/away` chat command — has a single source of truth.
+    /// Defaults to `.greatestFiniteMagnitude` so a session that hits
+    /// `applyAwayState` before the supervisor ever runs (or with the
+    /// supervisor disabled outright) reads as not-idle.
+    var idleAwayThreshold: TimeInterval = .greatestFiniteMagnitude
     /// `true` when this session arrived on the TLS sibling listener
     /// (control port + 1 pair). Surfaced in the dispatch log + the
     /// 303 getClientInfoText profile so admins can confirm a user is
@@ -136,36 +151,70 @@ public actor ClientSession {
         return (account.permissions & required.rawValue) == required.rawValue
     }
 
-    /// Idle-away supervisor callback. If the session has been inactive
-    /// for at least `threshold` seconds, set the `.away` flag on its
-    /// broadcast user record. When activity resumes (lastActivityAt
-    /// moves forward of the threshold) clear the flag. Both transitions
-    /// fan out a `userChanged` (301) push so every client sees the
-    /// state change.
+    /// Send a single chat line to JUST this session — no broadcast.
+    /// Used by `/command` replies so the rest of the room never sees
+    /// server-private output. The `« ` prefix visually distinguishes
+    /// server lines from user `<nick>: text` chat.
+    func sendSystemReply(_ text: String) async {
+        let line = "« \(text)\r"
+        try? await writer(PacketEncoder.chatPush(
+            line: line, isAction: false, encoding: stringEncoding
+        ))
+    }
+
+    /// Multi-line variant of `sendSystemReply`. Joins lines with `\r`
+    /// so the client renders each on its own row inside one chatPush.
+    func sendSystemReply(lines: [String]) async {
+        let joined = lines.map { "« \($0)" }.joined(separator: "\r") + "\r"
+        try? await writer(PacketEncoder.chatPush(
+            line: joined, isAction: false, encoding: stringEncoding
+        ))
+    }
+
+    /// Idle-away supervisor callback. Stashes the operator-configured
+    /// `threshold` on the session and delegates to `applyAwayState`,
+    /// which is the shared reconciliation used by both the supervisor
+    /// and the `/away` chat command.
+    public func reconcileAwayState(threshold: TimeInterval) async {
+        self.idleAwayThreshold = threshold
+        await applyAwayState()
+    }
+
+    /// Compute the effective away state (idle OR manual) and, when it
+    /// differs from what was last broadcast, push a `userChanged`
+    /// (301) with the updated status. Shared between the idle
+    /// supervisor and the `/away` chat command so the two can never
+    /// disagree on the broadcast wire state.
     ///
     /// Skips pre-login sessions (`socketID == 0`) — those aren't in
     /// the registry yet and have nothing to broadcast.
-    public func reconcileAwayState(threshold: TimeInterval) async {
+    func applyAwayState() async {
         guard socketID != 0 else { return }
-        let isIdle = Date().timeIntervalSince(lastActivityAt) >= threshold
-        if isIdle == awayBroadcast { return }
+        let idleSeconds = Date().timeIntervalSince(lastActivityAt)
+        let isIdle = idleSeconds >= idleAwayThreshold
+        let isAway = isIdle || manuallyAway
+        if isAway == awayBroadcast { return }
 
         let baseStatus = authenticatedAccount.initialHotStatus
         let awayBit: UInt16 = 1 << 0
-        let newStatus: UInt16 = isIdle ? (baseStatus | awayBit) : baseStatus
-        guard let updated = await registry.updateMemberStatus(socketID: socketID, status: newStatus) else {
+        let newStatus: UInt16 = isAway ? (baseStatus | awayBit) : baseStatus
+        guard let updated = await registry.updateMemberStatus(
+            socketID: socketID, status: newStatus
+        ) else {
             return
         }
         await registry.broadcast(
             PacketEncoder.userChangedPush(member: updated, encoding: stringEncoding),
             excluding: nil
         )
-        awayBroadcast = isIdle
-        serverLogger.debug("idle away reconcile", metadata: [
+        awayBroadcast = isAway
+        serverLogger.debug("away reconcile", metadata: [
             "socketID": "\(socketID)",
             "nickname": "\(nickname)",
+            "isAway": "\(isAway)",
             "isIdle": "\(isIdle)",
-            "idleSeconds": "\(Int(Date().timeIntervalSince(lastActivityAt)))"
+            "manuallyAway": "\(manuallyAway)",
+            "idleSeconds": "\(Int(idleSeconds))"
         ])
     }
 
@@ -593,6 +642,17 @@ public actor ClientSession {
 
     private func handleChat(header: PacketHeader, fields: [PacketField]) async {
         guard let body = fields.string(.message, encoding: stringEncoding) else {
+            try? await writer(PacketEncoder.emptyReply(
+                taskNumber: header.taskNumber,
+                transactionID: 105
+            ))
+            return
+        }
+        // Slash-commands are intercepted before the broadcast path —
+        // never echoed as chat to other users. Unknown / well-formed
+        // / both ack with an emptyReply so the client's task tracker
+        // doesn't time out.
+        if await handleChatCommandIfPresent(body: body, header: header) {
             try? await writer(PacketEncoder.emptyReply(
                 taskNumber: header.taskNumber,
                 transactionID: 105
