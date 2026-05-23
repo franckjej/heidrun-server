@@ -539,7 +539,15 @@ public actor ClientSession {
             excluding: assigned
         )
 
-        if let text = configuration.agreement {
+        // Real Hotline servers push the agreement (transID 109) right
+        // after the login reply. Skipped when no agreement is
+        // configured, or when the authenticated account holds the
+        // `.dontShowAgreement` privilege — admin-style accounts opt
+        // out so they don't see the welcome banner every time they
+        // reconnect. Mirrors HeidrunTestServer/Connection.swift's
+        // gate, which has lived in the test server since the protocol
+        // package's first release.
+        if let text = configuration.agreement, !hasPrivilege(.dontShowAgreement) {
             try? await writer(PacketEncoder.agreementPush(text: text, encoding: stringEncoding))
         }
     }
