@@ -98,7 +98,19 @@ nickname = "Admin"
 # bit and broadcasts userChanged so other clients dim that row. The
 # next packet from the session clears it again. The supervisor
 # walks the live session list every `idle_away_poll_interval`
-# seconds. Set the threshold to 0 (or omit) to disable.
+# seconds. Set the threshold to 0 (or omit) to disable. Note:
+# transID 500 client keepalive pings are NOT counted as activity
+# (otherwise idle would never fire in practice).
 # Defaults: 600 seconds idle, 60 second poll.
 # idle_away_threshold = 600
 # idle_away_poll_interval = 60
+
+# One-shot upgrade hook for operators crossing the May 22 2026 commit
+# (`8a78eb1`) that bumped the bootstrap admin seed from 5 enforcement
+# bits to `UserPrivileges.all`. When `true`, the server rewrites the
+# bootstrap admin row's permissions to UserPrivileges.all on the
+# next startup, even when the row already exists. Flip on, deploy
+# once, flip back off so subsequent restarts don't clobber operator-
+# tightened permissions. Default false. Env override:
+# HEIDRUN_RESET_ADMIN_PERMISSIONS=1.
+# reset_admin_permissions = false

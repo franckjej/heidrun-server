@@ -90,6 +90,18 @@ public struct ServerConfiguration: Sendable {
     /// before `HeidrunServer.start()`).
     public var startedAt: Date
 
+    /// One-shot upgrade hook for operators upgrading across the
+    /// May 22 2026 commit (`8a78eb1`) that bumped the bootstrap
+    /// admin seed from five enforcement bits to
+    /// `UserPrivileges.all.rawValue`. When `true`, the server
+    /// rewrites the bootstrap admin row's permissions on startup
+    /// even if the row already exists (which `bootstrapIfEmpty`
+    /// won't touch). Operators flip it on, deploy once, then turn
+    /// it back off so subsequent restarts don't clobber operator-
+    /// configured permission tightening. Default `false` —
+    /// deliberately opt-in.
+    public var resetAdminPermissions: Bool
+
     public init(
         port: UInt16 = 5500,
         bindHost: String = "0.0.0.0",
@@ -111,7 +123,8 @@ public struct ServerConfiguration: Sendable {
         bannerKind: HeidrunCore.ServerBanner.Kind = .jpeg,
         idleAwayThreshold: TimeInterval? = 600,
         idleAwayPollInterval: TimeInterval = 60,
-        startedAt: Date = Date()
+        startedAt: Date = Date(),
+        resetAdminPermissions: Bool = false
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -134,5 +147,6 @@ public struct ServerConfiguration: Sendable {
         self.idleAwayThreshold = idleAwayThreshold
         self.idleAwayPollInterval = idleAwayPollInterval
         self.startedAt = startedAt
+        self.resetAdminPermissions = resetAdminPermissions
     }
 }

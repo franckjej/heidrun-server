@@ -61,6 +61,13 @@ public struct ServerConfigurationFile: Codable, Sendable {
     /// How often (seconds) the supervisor walks the live session list.
     /// Defaults to 60.
     public var idleAwayPollInterval: Int?
+    /// One-shot upgrade hook — when `true`, the server rewrites the
+    /// bootstrap admin row's permissions to `UserPrivileges.all` on
+    /// startup even if the row already exists. Use to recover from
+    /// the pre-`8a78eb1` (May 22 2026) seed where the admin only got
+    /// 5 enforcement bits. Off by default; flip on, deploy, flip
+    /// off so subsequent restarts don't clobber operator edits.
+    public var resetAdminPermissions: Bool?
 
     public struct BootstrapAdminFile: Codable, Sendable {
         public var login: String?
@@ -96,7 +103,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
         bannerPath: String? = nil,
         bannerKind: String? = nil,
         idleAwayThreshold: Int? = nil,
-        idleAwayPollInterval: Int? = nil
+        idleAwayPollInterval: Int? = nil,
+        resetAdminPermissions: Bool? = nil
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -116,6 +124,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
         self.bannerKind = bannerKind
         self.idleAwayThreshold = idleAwayThreshold
         self.idleAwayPollInterval = idleAwayPollInterval
+        self.resetAdminPermissions = resetAdminPermissions
     }
 
     enum CodingKeys: String, CodingKey {
@@ -137,6 +146,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
         case bannerKind = "banner_kind"
         case idleAwayThreshold = "idle_away_threshold"
         case idleAwayPollInterval = "idle_away_poll_interval"
+        case resetAdminPermissions = "reset_admin_permissions"
     }
 
     public enum LoadError: Swift.Error, Equatable {
@@ -262,6 +272,19 @@ public struct ServerConfigurationFile: Codable, Sendable {
             }
             return 600
         }()
+        // Reset hook — env var wins, accepts "1"/"true"/"yes" (any case)
+        // as truthy; everything else is false. Defaults to file value,
+        // then `false` if the file is silent too.
+        let resolvedReset: Bool = {
+            if let raw = environment["HEIDRUN_RESET_ADMIN_PERMISSIONS"] {
+                switch raw.lowercased() {
+                case "1", "true", "yes", "on": return true
+                default: return false
+                }
+            }
+            return resetAdminPermissions ?? false
+        }()
+
         let resolvedIdlePoll: TimeInterval = {
             if let raw = environment["HEIDRUN_IDLE_AWAY_POLL"], let parsed = Int(raw), parsed > 0 {
                 return TimeInterval(parsed)
@@ -289,7 +312,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
             bannerPath: resolvedBannerPath,
             bannerKind: resolvedBannerKind,
             idleAwayThreshold: resolvedIdleThreshold,
-            idleAwayPollInterval: resolvedIdlePoll
+            idleAwayPollInterval: resolvedIdlePoll,
+            resetAdminPermissions: resolvedReset
         )
     }
 }

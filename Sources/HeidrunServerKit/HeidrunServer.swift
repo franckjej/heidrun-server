@@ -83,6 +83,34 @@ public actor HeidrunServer {
                 serverLogger.info("bootstrap admin skipped (accounts table not empty)", metadata: [
                     "login": "\(bootstrap.login)"
                 ])
+                // One-shot upgrade hook: when an operator sets
+                // HEIDRUN_RESET_ADMIN_PERMISSIONS=1 (or
+                // reset_admin_permissions=true in TOML), force the
+                // bootstrap admin's permissions to UserPrivileges.all.
+                // Use to recover from the pre-`8a78eb1` (May 22 2026)
+                // seed that only included 5 enforcement bits. Idempotent
+                // but operator-driven: flip the flag on, deploy once to
+                // refresh the row, flip it off again so subsequent
+                // restarts don't clobber operator-tightened permissions.
+                if configuration.resetAdminPermissions {
+                    let updated = try await accountStore.update(
+                        login: bootstrap.login,
+                        nickname: nil,
+                        iconID: nil,
+                        permissions: UserPrivileges.all.rawValue,
+                        newPassword: nil
+                    )
+                    if updated != nil {
+                        serverLogger.info("bootstrap admin permissions reset (HEIDRUN_RESET_ADMIN_PERMISSIONS)", metadata: [
+                            "login": "\(bootstrap.login)",
+                            "permissions": "0x\(String(UserPrivileges.all.rawValue, radix: 16))"
+                        ])
+                    } else {
+                        serverLogger.warning("HEIDRUN_RESET_ADMIN_PERMISSIONS set but no row matches the configured bootstrap admin login", metadata: [
+                            "login": "\(bootstrap.login)"
+                        ])
+                    }
+                }
             }
         }
         // Always make sure a `guest` row exists so anonymous logins
@@ -112,12 +140,30 @@ public actor HeidrunServer {
         let bannerBytes: Data?
         if let bannerPath = configuration.bannerPath, !bannerPath.isEmpty {
             do {
-                bannerBytes = try Data(contentsOf: URL(fileURLWithPath: bannerPath))
+                let loaded = try Data(contentsOf: URL(fileURLWithPath: bannerPath))
+                bannerBytes = loaded
                 serverLogger.info("loaded server banner", metadata: [
                     "path": "\(bannerPath)",
-                    "size": "\(bannerBytes?.count ?? 0)",
+                    "size": "\(loaded.count)",
                     "kind": "\(configuration.bannerKind.rawValue)"
                 ])
+                // Sanity check: warn if the configured banner_kind
+                // doesn't match the file's magic bytes. JPEG / GIF /
+                // BMP have well-known signatures; PICT has a 512-byte
+                // header before the magic so we skip that case;
+                // URL-mode treats the bytes as a UTF-8 link so a
+                // magic-byte check is meaningless. A mismatch doesn't
+                // disable the banner — modern clients usually sniff
+                // the format themselves — but the WARNING gives the
+                // operator a clear pointer to a config typo.
+                if let detected = Self.detectedBannerFormat(loaded),
+                   detected != configuration.bannerKind {
+                    serverLogger.warning("banner kind mismatch", metadata: [
+                        "configured": "\(configuration.bannerKind.rawValue)",
+                        "detected": "\(detected.rawValue)",
+                        "hint": "update HEIDRUN_BANNER_KIND / banner_kind to match the file"
+                    ])
+                }
             } catch {
                 serverLogger.warning("failed to load banner; 212 requests will fail", metadata: [
                     "path": "\(bannerPath)",
@@ -295,6 +341,27 @@ public actor HeidrunServer {
         }
 
         return boundPort
+    }
+
+    /// Best-effort magic-byte sniff for the banner file. Returns the
+    /// detected format when the bytes match a known signature, or
+    /// `nil` when the format is undetectable (PICT, raw URL bytes, or
+    /// an unrecognised header). Used only for the startup warning —
+    /// never for routing decisions.
+    private static func detectedBannerFormat(
+        _ data: Data
+    ) -> HeidrunCore.ServerBanner.Kind? {
+        let header = data.prefix(4)
+        if header.starts(with: [0xFF, 0xD8]) {
+            return .jpeg
+        }
+        if header.starts(with: [0x47, 0x49, 0x46]) {       // "GIF"
+            return .gif
+        }
+        if header.starts(with: [0x42, 0x4D]) {              // "BM"
+            return .bmp
+        }
+        return nil
     }
 
     public func stop() async {

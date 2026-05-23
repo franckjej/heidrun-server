@@ -211,7 +211,11 @@ public actor ClientSession {
             excluding: nil
         )
         awayBroadcast = isAway
-        serverLogger.debug("away reconcile", metadata: [
+        // Bumped to INFO: transitions are infrequent (one per session
+        // per ~10 min in typical deployments) but operationally
+        // interesting — they're the visible signal that an idle
+        // supervisor flap or a /away toggle happened.
+        serverLogger.info("away reconcile", metadata: [
             "socketID": "\(socketID)",
             "nickname": "\(nickname)",
             "isAway": "\(isAway)",

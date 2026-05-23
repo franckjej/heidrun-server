@@ -206,7 +206,7 @@ Three ways to bring the admin row up to date:
      "UPDATE accounts SET permissions = 2199022731263 WHERE login = 'admin';"
    docker compose start heidrun
    ```
-   `2199022731263` is `0x1FFFF7FFFFF` — `UserPrivileges.all.rawValue`
+   `2199022731263` is `0x1FFFFF7FFFF` — `UserPrivileges.all.rawValue`
    as of this commit (bits 0–18, 20–40; bit 19 is unused in the
    classic Hotline protocol). If new bits get added upstream the
    value changes; spin up a fresh DB once and read the exact hex
@@ -215,6 +215,19 @@ Three ways to bring the admin row up to date:
    still effectively empty (no real account history, news, or files
    you care about). `docker compose down -v && docker compose up -d`
    wipes the volume and fires the seed afresh.
+4. **One-shot env-var hook** — `HEIDRUN_RESET_ADMIN_PERMISSIONS=1`
+   (or `reset_admin_permissions = true` in the TOML) rewrites the
+   bootstrap admin row's permissions to `UserPrivileges.all` on the
+   next startup, even when the row already exists. Logs
+   `bootstrap admin permissions reset (HEIDRUN_RESET_ADMIN_PERMISSIONS)`
+   at INFO. Flip on, deploy once, flip back off so subsequent
+   restarts don't clobber any operator-tightened permissions:
+   ```bash
+   HEIDRUN_RESET_ADMIN_PERMISSIONS=1 docker compose up -d
+   # confirm the log line, then:
+   unset HEIDRUN_RESET_ADMIN_PERMISSIONS   # or remove the env line
+   docker compose up -d
+   ```
 
 ### Guest account
 
