@@ -569,15 +569,15 @@ never broadcast as chat, so only the sender sees the response.
 
 | command    | what it does                                                      |
 |------------|-------------------------------------------------------------------|
-| `/version` | private two-line reply: `« HeidrunServer X.Y.Z` + `« build: …`     |
-| `/away`    | toggles the `UserStatusFlags.away` bit immediately; broadcasts the new status to everyone via `userChanged` (301); confirms privately to the sender with `« You are now away.` / `« Welcome back.` |
+| `/version` | private two-line reply: `*** HeidrunServer X.Y.Z` + `*** build: …`     |
+| `/away`    | toggles the `UserStatusFlags.away` bit immediately; broadcasts the new status to everyone via `userChanged` (301); confirms privately to the sender with `*** You are now away.` / `*** Welcome back.` |
 
 Parser specifics:
 
 - Single-`/` prefix only. `//emph` and a bare `/` fall through as
   normal chat.
 - Case-insensitive on the command head — `/Version`, `/AWAY` work.
-- Unknown `/foo` produces a sender-only `« Unknown command: /foo`
+- Unknown `/foo` produces a sender-only `*** Unknown command: /foo`
   reply; nothing is broadcast.
 - Whitespace is trimmed; extra tokens after a known command are
   silently ignored.

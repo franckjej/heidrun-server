@@ -1,10 +1,20 @@
 # Chat slash commands — design
 
-**Status:** Approved 2026-05-23. Implementation pending plan.
+**Status:** Approved 2026-05-23, implemented same day.
 **Authors:** Jens Francke + Claude
 **Scope:** First-pass `/command` system through the Hotline chat input,
 shipping with two commands: `/version` and `/away`. Designed for
 extension — adding a third command is one new method + one switch arm.
+
+**Post-implementation amendment (2026-05-23):** The system-reply
+prefix was changed from `« ` (U+00AB, MacRoman 0xC7) to `*** `
+(plain ASCII) during first deploy. The non-ASCII prefix didn't
+round-trip cleanly through the Linux server's
+`String.data(using: .macOSRoman)` path on at least one client/server
+combination — the receiver rendered the prefix as `â` instead of
+the expected `«`. ASCII is robust against any encoding-decoder
+mismatch and was a stylistic choice anyway. All references below
+showing `« ` should be read as `*** ` in the shipped code.
 
 ## Context
 

@@ -153,10 +153,13 @@ public actor ClientSession {
 
     /// Send a single chat line to JUST this session — no broadcast.
     /// Used by `/command` replies so the rest of the room never sees
-    /// server-private output. The `« ` prefix visually distinguishes
-    /// server lines from user `<nick>: text` chat.
+    /// server-private output. The `*** ` prefix visually distinguishes
+    /// server lines from user `<nick>: text` chat. ASCII-only so it
+    /// can't be garbled by an encoding round-trip mismatch between
+    /// the Linux server's `String.data(using: .macOSRoman)` and any
+    /// particular client's decoder.
     func sendSystemReply(_ text: String) async {
-        let line = "« \(text)\r"
+        let line = "*** \(text)\r"
         try? await writer(PacketEncoder.chatPush(
             line: line, isAction: false, encoding: stringEncoding
         ))
@@ -165,7 +168,7 @@ public actor ClientSession {
     /// Multi-line variant of `sendSystemReply`. Joins lines with `\r`
     /// so the client renders each on its own row inside one chatPush.
     func sendSystemReply(lines: [String]) async {
-        let joined = lines.map { "« \($0)" }.joined(separator: "\r") + "\r"
+        let joined = lines.map { "*** \($0)" }.joined(separator: "\r") + "\r"
         try? await writer(PacketEncoder.chatPush(
             line: joined, isAction: false, encoding: stringEncoding
         ))

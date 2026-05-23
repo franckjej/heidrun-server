@@ -129,7 +129,7 @@ struct ChatCommandsTests {
 
             #expect(reply.contains("HeidrunServer \(HeidrunServerInfo.version)"))
             #expect(reply.contains("build:"))
-            #expect(reply.contains("«"))
+            #expect(reply.contains("***"))
         }
     }
 
@@ -232,7 +232,7 @@ struct ChatCommandsTests {
 
             let reply = try await aliceReply
             await bobSilent
-            #expect(reply.contains("« You are now away."))
+            #expect(reply.contains("*** You are now away."))
         }
     }
 
@@ -288,7 +288,7 @@ struct ChatCommandsTests {
 
             let reply = try await aliceReply
             await bobSilent
-            #expect(reply.contains("« Unknown command: /madeup"))
+            #expect(reply.contains("*** Unknown command: /madeup"))
         }
     }
 
