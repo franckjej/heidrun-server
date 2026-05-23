@@ -373,7 +373,13 @@ public actor ClientSession {
         self.nickname = nick
         self.icon = iconValue
 
-        let assigned = await registry.register(session: self, nickname: nick, icon: iconValue)
+        let initialStatus = authenticatedAccount.initialHotStatus
+        let assigned = await registry.register(
+            session: self,
+            nickname: nick,
+            icon: iconValue,
+            status: initialStatus
+        )
         self.socketID = assigned
         serverLogger.info("user logged in", metadata: [
             "socketID": "\(assigned)",
@@ -396,7 +402,7 @@ public actor ClientSession {
             socketID: assigned,
             nickname: nick,
             icon: iconValue,
-            status: 0
+            status: initialStatus
         )
         await registry.broadcast(
             PacketEncoder.userChangedPush(member: member, encoding: stringEncoding),

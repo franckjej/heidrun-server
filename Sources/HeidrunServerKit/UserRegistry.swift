@@ -26,16 +26,20 @@ public actor UserRegistry {
     public init() {}
 
     /// Mint a unique `socketID`, store the (weakly-held) session and
-    /// initial member fields, and return the assigned ID.
+    /// initial member fields, and return the assigned ID. `status` is
+    /// the two-byte `hotStatus` (color + flags) the client should see
+    /// in `userListEntry` records — admins typically pass a non-zero
+    /// value so the red name + admin flag are baked into the broadcast.
     public func register(
         session: ClientSession,
         nickname: String,
-        icon: UInt16
+        icon: UInt16,
+        status: UInt16 = 0
     ) -> UInt16 {
         let assigned = nextSocketID
         nextSocketID &+= 1
         sessions[assigned] = WeakSession(value: session)
-        members[assigned] = Member(socketID: assigned, nickname: nickname, icon: icon, status: 0)
+        members[assigned] = Member(socketID: assigned, nickname: nickname, icon: icon, status: status)
         return assigned
     }
 

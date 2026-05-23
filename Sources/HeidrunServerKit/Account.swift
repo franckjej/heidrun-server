@@ -53,4 +53,35 @@ extension Account {
     public func has(_ required: AccountPrivilege) -> Bool {
         permissions & required.rawValue == required.rawValue
     }
+
+    /// `true` when this account holds an admin-level capability that
+    /// should surface as a visible status marker (red name + admin
+    /// flag) in clients. Currently keyed off `disconnectUsers` — the
+    /// classic "you can kick people" privilege used by every Hotline
+    /// admin role since the original Mac client.
+    public var isAdmin: Bool {
+        has(.disconnectUsers)
+    }
+
+    /// Two-byte `hotStatus` value to embed in `userListEntry` / `userChanged`
+    /// records for this account. High byte = colour palette index, low
+    /// byte = flag bitmask. Admins surface as palette 36 (#ff0000) +
+    /// the `admin` flag so clients honouring either signal paint the
+    /// row red.
+    public var initialHotStatus: UInt16 {
+        guard isAdmin else { return 0 }
+        // Palette ID 36, admin flag (1 << 1) — matches the classic Hotline
+        // admin appearance.
+        let color: UInt16 = 36
+        let flags: UInt16 = 1 << 1
+        return (color << 8) | flags
+    }
+}
+
+extension Account? {
+    /// Convenience: guests (no account) report no status flags / colour.
+    /// Authenticated accounts use their own `initialHotStatus`.
+    public var initialHotStatus: UInt16 {
+        self?.initialHotStatus ?? 0
+    }
 }
