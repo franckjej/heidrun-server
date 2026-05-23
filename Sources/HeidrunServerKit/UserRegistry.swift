@@ -46,12 +46,23 @@ public actor UserRegistry {
         nextSocketID &+= 1
         sessions[assigned] = WeakSession(value: session)
         members[assigned] = Member(socketID: assigned, nickname: nickname, icon: icon, status: status)
+        Self.logSnapshot("[USERLIST] register socket=\(assigned) nick=\(nickname)", members: members)
         return assigned
     }
 
     public func unregister(socketID: UInt16) {
+        let nick = members[socketID]?.nickname ?? "?"
         sessions.removeValue(forKey: socketID)
         members.removeValue(forKey: socketID)
+        Self.logSnapshot("[USERLIST] unregister socket=\(socketID) nick=\(nick)", members: members)
+    }
+
+    private static func logSnapshot(_ prefix: String, members: [UInt16: Member]) {
+        let summary = members.values
+            .sorted { $0.socketID < $1.socketID }
+            .map { "\($0.socketID):\($0.nickname)" }
+            .joined(separator: ",")
+        serverLogger.info("\(prefix) registry=[\(summary)] count=\(members.count)")
     }
 
     /// Replace the public-facing nickname / icon for an existing
@@ -130,17 +141,24 @@ public actor UserRegistry {
     /// originator's `socketID`; pass `nil` to deliver to everyone.
     public func broadcast(_ packet: Data, excluding originator: UInt16? = nil) async {
         var delivered = 0
+        var deliveredSockets: [UInt16] = []
         for (socket, weakSession) in sessions {
             if let excluded = originator, excluded == socket { continue }
             guard let session = weakSession.value else { continue }
             await session.send(packet)
             delivered += 1
+            deliveredSockets.append(socket)
         }
-        serverLogger.debug("broadcast", metadata: [
-            "delivered": "\(delivered)",
-            "excluding": originator.map { "\($0)" } ?? "none",
-            "bytes": "\(packet.count)"
-        ])
+        let transID: UInt16
+        if packet.count >= 4 {
+            let base = packet.startIndex
+            transID = (UInt16(packet[base + 2]) << 8) | UInt16(packet[base + 3])
+        } else {
+            transID = 0
+        }
+        let excludeDesc = originator.map { "\($0)" } ?? "none"
+        let sockets = deliveredSockets.sorted().map { "\($0)" }.joined(separator: ",")
+        serverLogger.info("[USERLIST] broadcast transID=\(transID) bytes=\(packet.count) excluding=\(excludeDesc) delivered=\(delivered) to=[\(sockets)]")
     }
 
     private final class WeakSession: @unchecked Sendable {

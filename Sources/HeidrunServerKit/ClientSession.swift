@@ -584,6 +584,8 @@ public actor ClientSession {
         // Filter so invisible peers don't leak — except the requester
         // always sees themselves in their own list.
         let members = await registry.snapshot(visibleTo: socketID)
+        let summary = members.map { "\($0.socketID):\($0.nickname)" }.joined(separator: ",")
+        serverLogger.info("[USERLIST] handleUserList requester=\(socketID) task=\(header.taskNumber) sending=[\(summary)] count=\(members.count)")
         let reply = PacketEncoder.userListReply(
             taskNumber: header.taskNumber,
             members: members,
