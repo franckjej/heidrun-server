@@ -15,18 +15,65 @@ public enum HeidrunServerInfo {
     /// release.
     public static let version: String = "0.7.0"
 
-    /// Short build identifier — typically the 7-char git SHA stamped
-    /// at Docker build time via `HEIDRUN_BUILD`. Returns `"dev"` when
-    /// unset or empty after sanitisation.
+    /// Short build identifier — typically the 7-char git SHA. Lookup
+    /// order:
+    ///
+    /// 1. `HEIDRUN_BUILD` env var (CI / explicit override).
+    /// 2. The file `<HEIDRUN_BUILD_INFO_DIR>/build-id` — the Dockerfile's
+    ///    `git-info` stage writes this so any image built from a git
+    ///    checkout auto-stamps without operator action.
+    /// 3. `"dev"` fallback for local `swift run` and any other
+    ///    unstamped environment.
     public static var buildIdentifier: String {
-        sanitised(ProcessInfo.processInfo.environment["HEIDRUN_BUILD"], fallback: "dev")
+        if let value = resolveBuildField(
+            envVar: "HEIDRUN_BUILD",
+            fileName: "build-id"
+        ) {
+            return value
+        }
+        return "dev"
     }
 
-    /// ISO-8601 build date stamped at Docker build time via
-    /// `HEIDRUN_BUILD_DATE`. Empty when unset — the `/version` reply
-    /// omits the parenthetical date in that case.
+    /// ISO-8601 build date stamped alongside the build identifier.
+    /// Same three-tier lookup as `buildIdentifier`; empty when nothing
+    /// is configured, in which case the `/version` reply omits the
+    /// parenthetical date entirely.
     public static var buildDate: String {
-        sanitised(ProcessInfo.processInfo.environment["HEIDRUN_BUILD_DATE"], fallback: "")
+        resolveBuildField(
+            envVar: "HEIDRUN_BUILD_DATE",
+            fileName: "build-date"
+        ) ?? ""
+    }
+
+    /// Shared resolution: env var (non-empty) wins; otherwise read the
+    /// matching file under `HEIDRUN_BUILD_INFO_DIR` when that env var
+    /// is set. Returns the sanitised value, or `nil` when neither
+    /// source yielded usable bytes.
+    private static func resolveBuildField(
+        envVar: String,
+        fileName: String,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> String? {
+        if let raw = environment[envVar], !raw.isEmpty {
+            let cleaned = sanitiseControl(raw)
+            if !cleaned.isEmpty { return cleaned }
+        }
+        if let dir = environment["HEIDRUN_BUILD_INFO_DIR"],
+           let contents = try? String(contentsOfFile: "\(dir)/\(fileName)", encoding: .utf8) {
+            let trimmed = contents.trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleaned = sanitiseControl(trimmed)
+            if !cleaned.isEmpty { return cleaned }
+        }
+        return nil
+    }
+
+    /// ASCII-control-byte filter shared by both env-var and file
+    /// sources. A malformed stamp can't smuggle a `\r` into the
+    /// multi-line `/version` reply.
+    private static func sanitiseControl(_ raw: String) -> String {
+        raw.filter {
+            !$0.isASCII || ($0.asciiValue ?? 0) >= 0x20
+        }
     }
 
     /// Swift language mode the binary was built against. Derived from
@@ -86,18 +133,5 @@ public enum HeidrunServerInfo {
             return "\(hours)h \(minutes)m"
         }
         return "\(minutes)m"
-    }
-
-    /// Strip ASCII control bytes from the raw value so a malformed
-    /// build stamp can't corrupt the multi-line `/version` chat reply
-    /// (an embedded `\r` would render as two lines on the wire).
-    /// Returns `fallback` when the input is `nil` or empty after
-    /// stripping.
-    private static func sanitised(_ raw: String?, fallback: String) -> String {
-        guard let raw else { return fallback }
-        let cleaned = raw.filter {
-            !$0.isASCII || ($0.asciiValue ?? 0) >= 0x20
-        }
-        return cleaned.isEmpty ? fallback : cleaned
     }
 }

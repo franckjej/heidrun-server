@@ -7,7 +7,12 @@
 # product, and bails out with "overlapping sources" if it can't find
 # Tests/HeidrunServerKitTests/ at the declared path.
 
-.git
+# .git is intentionally NOT excluded — the `git-info` build stage
+# reads it to auto-stamp the binary with the short SHA + ISO date
+# surfaced through `/version` and the bootstrap admin log line. The
+# build context cost is modest (a small repo) and the `git-info`
+# stage is the only consumer; the main Swift build stage's COPYs
+# are explicit and don't pull in `.git`.
 .gitignore
 .github
 

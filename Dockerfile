@@ -24,14 +24,25 @@
 
 # syntax=docker/dockerfile:1.6
 
-# Build-time stamps surfaced by the `/version` chat command at runtime.
-# Defaults yield "dev" / empty so unstamped local builds still produce a
-# valid binary; CI / release pipelines pass real values:
-#
-#   --build-arg GIT_REV="$(git rev-parse --short HEAD)"
-#   --build-arg BUILD_DATE="$(date -u +%Y-%m-%d)"
-ARG GIT_REV=dev
-ARG BUILD_DATE=
+# ──────────────────────────────────────────────────────────────────────────────
+# git-info stage — derive the short SHA + ISO date surfaced by /version
+# ──────────────────────────────────────────────────────────────────────────────
+# Tiny alpine + git stage that reads the repo's `.git` and writes two
+# small text files the runtime stage copies in. Isolating this in a
+# separate stage means a new commit invalidates ONLY this 5 MB image
+# layer — the multi-minute swift package resolve and the swift build
+# upstream stay cached. The files are picked up by HeidrunServerInfo
+# via HEIDRUN_BUILD_INFO_DIR; operators wanting a different stamp
+# (CI tag, release tarball without .git) can still override at
+# runtime via the HEIDRUN_BUILD / HEIDRUN_BUILD_DATE env vars on the
+# container.
+FROM alpine:3 AS git-info
+RUN apk add --no-cache git
+WORKDIR /src
+COPY .git ./.git
+RUN mkdir -p /out \
+ && (git rev-parse --short HEAD 2>/dev/null || echo dev) > /out/build-id \
+ && date -u +%Y-%m-%d > /out/build-date
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Build stage
@@ -106,20 +117,19 @@ RUN useradd --system --home-dir /var/lib/heidrun --shell /usr/sbin/nologin heidr
 COPY --from=build /usr/local/bin/heidrun-server /usr/local/bin/heidrun-server
 COPY heidrun-server.example.toml /etc/heidrun-server/config.toml
 
+# Drop the build-id + build-date stamps from the git-info stage into
+# a stable path the binary reads at startup. Owned by root + world-
+# readable so the unprivileged heidrun user can read them.
+COPY --from=git-info /out /usr/local/share/heidrun
+
 USER heidrun
 WORKDIR /var/lib/heidrun
-
-# Re-declare the build args in this stage so the ENV stamps below can
-# reference them (multi-stage builds don't inherit ARGs from globals).
-ARG GIT_REV
-ARG BUILD_DATE
 
 ENV HEIDRUN_CONFIG=/etc/heidrun-server/config.toml \
     HEIDRUN_DB_PATH=/var/lib/heidrun/heidrun.sqlite \
     HEIDRUN_FILES_ROOT=/var/lib/heidrun/files \
     HEIDRUN_LOG_LEVEL=info \
-    HEIDRUN_BUILD=${GIT_REV} \
-    HEIDRUN_BUILD_DATE=${BUILD_DATE}
+    HEIDRUN_BUILD_INFO_DIR=/usr/local/share/heidrun
 
 EXPOSE 5500 5501
 

@@ -249,6 +249,46 @@ struct ChatCommandsTests {
         }
     }
 
+    @Test("/version reads build id/date from HEIDRUN_BUILD_INFO_DIR when env vars are unset")
+    func versionReadsFromBuildInfoFile() async throws {
+        // Belt-and-braces: ensure neither env var leaks in from a
+        // previous test or the host shell.
+        unsetenv("HEIDRUN_BUILD")
+        unsetenv("HEIDRUN_BUILD_DATE")
+
+        let tempDir = NSTemporaryDirectory() + "heidrun-build-info-\(UUID().uuidString)"
+        try FileManager.default.createDirectory(
+            atPath: tempDir,
+            withIntermediateDirectories: true
+        )
+        defer { try? FileManager.default.removeItem(atPath: tempDir) }
+
+        try "f00ba12\n".write(
+            toFile: "\(tempDir)/build-id",
+            atomically: true,
+            encoding: .utf8
+        )
+        try "2026-05-23\n".write(
+            toFile: "\(tempDir)/build-date",
+            atomically: true,
+            encoding: .utf8
+        )
+        setenv("HEIDRUN_BUILD_INFO_DIR", tempDir, 1)
+        defer { unsetenv("HEIDRUN_BUILD_INFO_DIR") }
+
+        try await ServerTestHelpers.withRunningServer { _, port in
+            let alice = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Alice")
+            try await Task.sleep(for: .milliseconds(100))
+
+            async let reply = Self.awaitChat(alice) { $0.contains("build:") }
+            try await alice.sendChat("/version", in: nil, isAction: false)
+
+            let line = try await reply
+            #expect(line.contains("build: f00ba12 (2026-05-23)"),
+                    "expected file-baked stamp; got: \(line)")
+        }
+    }
+
     @Test("/version strips control bytes from a malformed build stamp")
     func versionStripsControlBytes() async throws {
         // Embed a literal newline in the stamp. The sanitiser must

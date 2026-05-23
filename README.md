@@ -106,23 +106,35 @@ ls .build/release/HeidrunServer
 ### Stamping the build identifier
 
 The running server surfaces a semver + short build identifier via the
-`/version` chat command (and the `bootstrap admin seeded` log line at
-startup). Two environment variables control the build metadata that
-gets baked into the Docker image:
+`/version` chat command. The Docker image **auto-stamps**: a tiny
+alpine + git stage in the Dockerfile reads the repo's `.git`,
+computes `git rev-parse --short HEAD` and `date -u +%Y-%m-%d`, and
+writes both into `/usr/local/share/heidrun/{build-id,build-date}`
+inside the image. `HeidrunServerInfo` reads those files at runtime
+via `HEIDRUN_BUILD_INFO_DIR` (pre-set in the Dockerfile). No extra
+env vars to remember:
 
 ```bash
-HEIDRUN_BUILD="$(git rev-parse --short HEAD)" \
-HEIDRUN_BUILD_DATE="$(date -u +%Y-%m-%d)" \
 DOCKER_BUILDKIT=1 GH_TOKEN="$(gh auth token)" \
   docker compose up -d --build
 ```
 
-The compose file forwards both into the Dockerfile as `--build-arg`s,
-which the runtime stage re-exports as `HEIDRUN_BUILD` / `HEIDRUN_BUILD_DATE`
-env vars. Unstamped local `swift run` users see `build: dev` and the
-parenthetical date is omitted. Malformed values (e.g. an env var that
-got a stray newline) are sanitised before they reach the wire so the
-multi-line `/version` reply can't be corrupted.
+A new commit invalidates only the small `git-info` stage — the
+multi-minute swift package resolve and the swift build stage stay
+cached.
+
+**Resolution order** at runtime (first non-empty wins):
+
+1. `HEIDRUN_BUILD` / `HEIDRUN_BUILD_DATE` env vars — CI / explicit
+   override (set via the compose `environment:` block, `docker run
+   -e`, or a systemd unit's `Environment=` line).
+2. Files under `HEIDRUN_BUILD_INFO_DIR` (the Dockerfile path).
+3. `"dev"` and an empty date for `swift run` / unstamped releases.
+
+Local `swift run` users see `build: dev` and the parenthetical date
+is omitted. Malformed values are sanitised before they reach the
+wire so an env var carrying a stray newline can't corrupt the multi-
+line `/version` reply.
 
 ## Configuration
 

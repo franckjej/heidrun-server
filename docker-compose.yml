@@ -40,17 +40,15 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-      args:
-        # Build-time stamps surfaced by the `/version` chat command at
-        # runtime. Operators export HEIDRUN_BUILD / HEIDRUN_BUILD_DATE
-        # before `docker compose build` (or `up --build`); unset values
-        # fall through to the Dockerfile defaults (`dev` / empty).
-        #
-        #   HEIDRUN_BUILD="$(git rev-parse --short HEAD)" \
-        #   HEIDRUN_BUILD_DATE="$(date -u +%Y-%m-%d)" \
-        #   docker compose up -d --build
-        GIT_REV: ${HEIDRUN_BUILD:-dev}
-        BUILD_DATE: ${HEIDRUN_BUILD_DATE:-}
+      # Build identifier + date now auto-stamp from the repo's `.git`
+      # via the Dockerfile's `git-info` stage. No build args needed.
+      # Operators wanting a different stamp (CI tag, release tarball
+      # shipped without .git, etc.) can override at *runtime* via the
+      # `environment:` block below:
+      #
+      #   environment:
+      #     HEIDRUN_BUILD: "v1.0.0"
+      #     HEIDRUN_BUILD_DATE: "2026-06-01"
       secrets:
         - gh_token
     container_name: heidrun-server
