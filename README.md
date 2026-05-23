@@ -567,10 +567,11 @@ Users can issue server commands by typing them into the public chat
 input. Slash-prefixed lines are intercepted server-side — they are
 never broadcast as chat, so only the sender sees the response.
 
-| command    | what it does                                                      |
-|------------|-------------------------------------------------------------------|
-| `/version` | private verbose system block: version, build id + date, Swift compiler version, platform, configured server name, listening ports (with TLS sibling pair when configured), uptime, live user count |
-| `/away`    | toggles the `UserStatusFlags.away` bit immediately; broadcasts the new status to everyone via `userChanged` (301); confirms privately to the sender with `*** You are now away.` / `*** Welcome back.` |
+| command     | what it does                                                      |
+|-------------|-------------------------------------------------------------------|
+| `/version`  | private verbose system block: version, build id + date, Swift compiler version, platform, configured server name, listening ports (with TLS sibling pair when configured), uptime, live user count |
+| `/away`     | toggles the `UserStatusFlags.away` bit immediately; broadcasts the new status to everyone via `userChanged` (301); confirms privately to the sender with `*** You are now away.` / `*** Welcome back.` |
+| `/broadcast <message>` | sends a server-wide broadcast popup (transID 355) to every connected session, including the sender so they see their own message as confirmation. Gated on the `.canBroadcast` privilege (admin-only by default). Guests / unprivileged accounts get a sender-only `*** Permission denied: …` reply. Empty bodies surface `*** Usage: /broadcast <message>`. |
 
 Example `/version` reply (eight lines, joined by `\r` inside a single
 `chatPush`):

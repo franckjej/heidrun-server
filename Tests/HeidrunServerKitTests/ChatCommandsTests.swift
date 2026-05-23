@@ -74,6 +74,67 @@ struct ChatCommandsTests {
         #expect(saw == false, "expected NO matching chat; got one")
     }
 
+    /// Wait up to `timeout` for the first broadcastReceived (355)
+    /// event on `client`. Returns the message body or throws on
+    /// timeout.
+    private static func awaitBroadcast(
+        _ client: any HotlineClient,
+        timeout: Duration = .seconds(2)
+    ) async throws -> String {
+        let collector = Task { () -> String? in
+            for await event in client.events {
+                if case let .broadcastReceived(message) = event {
+                    return message
+                }
+            }
+            return nil
+        }
+        let captured: String? = await withTaskGroup(of: String?.self) { group in
+            group.addTask {
+                try? await Task.sleep(for: timeout)
+                collector.cancel()
+                return nil
+            }
+            group.addTask { await collector.value }
+            let first = (await group.next()).flatMap { $0 }
+            group.cancelAll()
+            return first
+        }
+        guard let captured else {
+            throw NSError(
+                domain: "ChatCommandsTests",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "timed out waiting for broadcast"]
+            )
+        }
+        return captured
+    }
+
+    /// Assert `client` receives NO broadcast (355) within `timeout`.
+    private static func expectNoBroadcast(
+        _ client: any HotlineClient,
+        within timeout: Duration = .milliseconds(500)
+    ) async {
+        let collector = Task { () -> Bool in
+            for await event in client.events {
+                if case .broadcastReceived = event { return true }
+            }
+            return false
+        }
+        let saw: Bool = await withTaskGroup(of: Bool.self) { group in
+            group.addTask {
+                try? await Task.sleep(for: timeout)
+                collector.cancel()
+                return false
+            }
+            group.addTask { await collector.value }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+        #expect(saw == false, "expected NO broadcast; got one")
+    }
+
     /// Wait up to `timeout` for the first userChanged event on `client`
     /// matching `predicate`. Returns the user or throws on timeout.
     private static func awaitUserChanged(
@@ -303,6 +364,97 @@ struct ChatCommandsTests {
             #expect(user.status.color == 36)
             #expect(user.status.flags.contains(.away))
             #expect(user.status.flags.contains(.admin))
+        }
+    }
+
+    // MARK: - /broadcast
+
+    @Test("/broadcast from a canBroadcast holder reaches every other client + sender confirmation")
+    func broadcastAdminPath() async throws {
+        let configuration = ServerConfiguration(
+            port: 0,
+            serverName: "Heidrun integration test",
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin",
+                password: "admin",
+                nickname: "Admin"
+            )
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let admin = try await ServerTestHelpers.connectAndLogin(
+                port: port,
+                nickname: "Admin",
+                loginName: "admin",
+                password: "admin"
+            )
+            let bob = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Bob")
+            try await Task.sleep(for: .milliseconds(150))
+
+            async let bobBroadcast = Self.awaitBroadcast(bob)
+            async let adminBroadcast = Self.awaitBroadcast(admin)
+            async let adminConfirm = Self.awaitChat(admin) { $0.contains("Broadcast sent") }
+
+            try await admin.sendChat("/broadcast server going down at midnight", in: nil, isAction: false)
+
+            let bobReceived = try await bobBroadcast
+            let adminReceived = try await adminBroadcast
+            let confirmation = try await adminConfirm
+
+            #expect(bobReceived == "server going down at midnight")
+            // Sender included so the operator sees their own message
+            // as confirmation it landed via the same channel.
+            #expect(adminReceived == "server going down at midnight")
+            #expect(confirmation.contains("*** Broadcast sent."))
+        }
+    }
+
+    @Test("/broadcast from a guest is rejected; no peer receives the message")
+    func broadcastGuestRejected() async throws {
+        try await ServerTestHelpers.withRunningServer { _, port in
+            let guest = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Snooper")
+            let bob = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Bob")
+            try await Task.sleep(for: .milliseconds(150))
+
+            async let guestError = Self.awaitChat(guest) { $0.contains("Permission denied") }
+            async let bobSilent: Void = Self.expectNoBroadcast(bob)
+
+            try await guest.sendChat("/broadcast i shouldnt be able to do this", in: nil, isAction: false)
+
+            let errorLine = try await guestError
+            await bobSilent
+            #expect(errorLine.contains("/broadcast requires the canBroadcast privilege"))
+        }
+    }
+
+    @Test("/broadcast with no message surfaces a usage hint, no peer broadcast")
+    func broadcastUsageHint() async throws {
+        let configuration = ServerConfiguration(
+            port: 0,
+            serverName: "Heidrun integration test",
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin",
+                password: "admin",
+                nickname: "Admin"
+            )
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let admin = try await ServerTestHelpers.connectAndLogin(
+                port: port,
+                nickname: "Admin",
+                loginName: "admin",
+                password: "admin"
+            )
+            let bob = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Bob")
+            try await Task.sleep(for: .milliseconds(150))
+
+            async let usage = Self.awaitChat(admin) { $0.contains("Usage:") }
+            async let bobSilent: Void = Self.expectNoBroadcast(bob)
+
+            try await admin.sendChat("/broadcast    ", in: nil, isAction: false)
+
+            let hint = try await usage
+            await bobSilent
+            #expect(hint.contains("*** Usage: /broadcast <message>"))
         }
     }
 

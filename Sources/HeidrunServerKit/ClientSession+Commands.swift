@@ -47,6 +47,8 @@ extension ClientSession {
             await handleVersionCommand(args: args)
         case "away":
             await handleAwayCommand(args: args)
+        case "broadcast":
+            await handleBroadcastCommand(args: args)
         default:
             serverLogger.info("unknown chat command", metadata: [
                 "command": "\(command)",
@@ -100,5 +102,37 @@ extension ClientSession {
         manuallyAway.toggle()
         await applyAwayState()
         await sendSystemReply(manuallyAway ? "You are now away." : "Welcome back.")
+    }
+
+    /// `/broadcast <message>` — send a server-wide broadcast popup
+    /// (transID 355) to every connected session, including the
+    /// sender so they see their own message as confirmation it
+    /// landed. Gated on `.canBroadcast` (admin-only by default).
+    /// Empty bodies surface a usage hint instead of broadcasting.
+    ///
+    /// Differs from the existing 355 transaction handler
+    /// (`handleBroadcast`) in two ways: (1) the 355 transaction
+    /// excludes the originator because their own client renders the
+    /// message locally before the round-trip — here, the sender is
+    /// in a chat window and needs to see the broadcast surface
+    /// through the same channel everyone else sees; (2) a sender-only
+    /// `*** Broadcast sent.` chat line confirms the privilege check
+    /// passed and the message went out.
+    func handleBroadcastCommand(args: [String]) async {
+        guard hasPrivilege(.canBroadcast) else {
+            await sendSystemReply("Permission denied: /broadcast requires the canBroadcast privilege.")
+            return
+        }
+        let message = args.joined(separator: " ")
+            .trimmingCharacters(in: .whitespaces)
+        guard !message.isEmpty else {
+            await sendSystemReply("Usage: /broadcast <message>")
+            return
+        }
+        await registry.broadcast(
+            PacketEncoder.serverBroadcastPush(message: message, encoding: stringEncoding),
+            excluding: nil
+        )
+        await sendSystemReply("Broadcast sent.")
     }
 }
