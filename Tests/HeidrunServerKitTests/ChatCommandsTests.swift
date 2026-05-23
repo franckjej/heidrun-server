@@ -431,12 +431,14 @@ struct ChatCommandsTests {
             try await Task.sleep(for: .milliseconds(150))
 
             async let bobBroadcast = Self.awaitBroadcast(bob)
+            async let bobChatFallback = Self.awaitChat(bob) { $0.contains("BROADCAST from Admin") }
             async let adminBroadcast = Self.awaitBroadcast(admin)
             async let adminConfirm = Self.awaitChat(admin) { $0.contains("Broadcast sent") }
 
             try await admin.sendChat("/broadcast server going down at midnight", in: nil, isAction: false)
 
             let bobReceived = try await bobBroadcast
+            let bobChatLine = try await bobChatFallback
             let adminReceived = try await adminBroadcast
             let confirmation = try await adminConfirm
 
@@ -444,6 +446,8 @@ struct ChatCommandsTests {
             // Sender included so the operator sees their own message
             // as confirmation it landed via the same channel.
             #expect(adminReceived == "server going down at midnight")
+            // Chat-window fallback for clients without a broadcast-popup UI.
+            #expect(bobChatLine.contains("*** BROADCAST from Admin: server going down at midnight ***"))
             #expect(confirmation.contains("*** Broadcast sent."))
         }
     }

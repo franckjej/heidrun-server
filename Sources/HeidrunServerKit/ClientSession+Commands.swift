@@ -221,8 +221,23 @@ extension ClientSession {
             await sendSystemReply("Usage: /broadcast <message>")
             return
         }
+        // Native 355 push for clients that render server broadcasts as
+        // a modal popup (mobius, mierauhotline, classic Hotline).
         await registry.broadcast(
             PacketEncoder.serverBroadcastPush(message: message, encoding: stringEncoding),
+            excluding: nil
+        )
+        // Chat-window fallback so clients without a broadcast-popup UI
+        // (notably heidrun-swift today) still surface the message. The
+        // " *** BROADCAST from <nick>: <msg> ***" framing is visually
+        // distinct from regular `<nick>: <text>` chat so it's hard to
+        // miss in the scroll. Trade-off: clients that DO render the
+        // 355 popup will see the message twice (once as popup, once as
+        // chat) — acceptable until those clients can be taught to
+        // suppress one or the other.
+        let chatLine = " *** BROADCAST from \(nickname): \(message) ***\r"
+        await registry.broadcast(
+            PacketEncoder.chatPush(line: chatLine, isAction: false, encoding: stringEncoding),
             excluding: nil
         )
         await sendSystemReply("Broadcast sent.")
