@@ -546,6 +546,61 @@ struct ChatCommandsTests {
         }
     }
 
+    @Test("/whoami returns the caller's session block; admin shows admin=true + privilege hex")
+    func whoamiAsAdmin() async throws {
+        let configuration = ServerConfiguration(
+            port: 0,
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin", password: "admin", nickname: "Admin"
+            )
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let admin = try await ServerTestHelpers.connectAndLogin(
+                port: port,
+                nickname: "Admin",
+                loginName: "admin",
+                password: "admin"
+            )
+            let bob = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Bob")
+            try await Task.sleep(for: .milliseconds(150))
+
+            async let reply = Self.awaitChat(admin) { $0.contains("permissions:") }
+            async let bobSilent: Void = Self.expectNoChat(bob) { $0.contains("permissions:") }
+
+            try await admin.sendChat("/whoami", in: nil, isAction: false)
+
+            let block = try await reply
+            await bobSilent
+            #expect(block.contains("you: Admin"))
+            #expect(block.contains("login: admin"))
+            #expect(block.contains("admin: true"))
+            // UserPrivileges.all expressed as hex; specific value
+            // depends on what's defined upstream but this prefix
+            // matches the current 41-bit set.
+            #expect(block.contains("permissions: 0x1fffff7ffff"))
+            #expect(block.contains("tls: no"))
+            #expect(block.contains("away: false"))
+        }
+    }
+
+    @Test("/whoami for a guest shows the guest seed login + admin=false")
+    func whoamiAsGuest() async throws {
+        try await ServerTestHelpers.withRunningServer { _, port in
+            let alice = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Alice")
+            try await Task.sleep(for: .milliseconds(100))
+
+            async let reply = Self.awaitChat(alice) { $0.contains("permissions:") }
+            try await alice.sendChat("/whoami", in: nil, isAction: false)
+
+            let block = try await reply
+            #expect(block.contains("you: Alice"))
+            #expect(block.contains("login: guest"))
+            #expect(block.contains("admin: false"))
+            // Guest's seed permissions: 0x18000103e04 — see Account.guestDefaultPermissions.
+            #expect(block.contains("permissions: 0x18000103e04"))
+        }
+    }
+
     @Test("/uptime is a one-line sender-only reply")
     func uptimeReply() async throws {
         try await ServerTestHelpers.withRunningServer { _, port in

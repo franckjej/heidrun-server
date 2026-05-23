@@ -659,7 +659,11 @@ public actor ClientSession {
         return lines.joined(separator: "\r")
     }
 
-    private static func formatLoginTime(_ date: Date) -> String {
+    /// Format a login timestamp the way Hotline servers traditionally
+    /// rendered it — `h:mm:ssa zzz MMM d`. Used by the
+    /// `getClientInfoText` (303) profile and the `/whoami` chat
+    /// command; lifted to `internal` so extension files can share it.
+    static func formatLoginTime(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "h:mm:ssa zzz MMM d"

@@ -53,6 +53,8 @@ extension ClientSession {
             await handleMeCommand(args: args)
         case "who", "users":
             await handleWhoCommand(args: args)
+        case "whoami":
+            await handleWhoamiCommand(args: args)
         case "uptime":
             await handleUptimeCommand(args: args)
         case "kick":
@@ -143,6 +145,36 @@ extension ClientSession {
         await sendSystemReply(lines: lines)
     }
 
+    /// `/whoami` — sender-only 10-line block describing the current
+    /// session: nickname, socket, login (or "guest" for anonymous),
+    /// remote host (`ip:port`), client version, login timestamp, TLS
+    /// yes/no, admin yes/no, away yes/no (the *effective* state
+    /// last broadcast — matches what peers see), and the raw
+    /// privilege bitmask for ops debugging "why doesn't my
+    /// privilege X work?". No privilege gate: a user can always
+    /// inspect their own session even when `.getUserInfo` is denied.
+    func handleWhoamiCommand(args: [String]) async {
+        let loginValue = authenticatedAccount?.login ?? "—"
+        let hostValue = remoteHost ?? "—"
+        let clientValue = clientVersion.map { "\($0)" } ?? "—"
+        let sinceValue = loginAt.map(Self.formatLoginTime) ?? "—"
+        let permissions = authenticatedAccount?.permissions ?? 0
+        let isAdmin = authenticatedAccount?.isAdmin ?? false
+
+        await sendSystemReply(lines: [
+            "you: \(nickname)",
+            "socket: \(socketID)",
+            "login: \(loginValue)",
+            "host: \(hostValue)",
+            "client: \(clientValue)",
+            "since: \(sinceValue)",
+            "tls: \(isTLS ? "yes" : "no")",
+            "admin: \(isAdmin)",
+            "away: \(awayBroadcast)",
+            "permissions: 0x\(String(permissions, radix: 16))"
+        ])
+    }
+
     /// `/uptime` — sender-only one-liner with the server's uptime.
     /// A focused subset of `/version` for operators who just want
     /// the duration without the rest of the system block.
@@ -188,6 +220,7 @@ extension ClientSession {
             "  /version            — server version, build, and runtime info",
             "  /uptime             — show server uptime",
             "  /who, /users        — list connected users",
+            "  /whoami             — your own session info",
             "  /away               — toggle your away status",
             "  /me <action>        — send an action chat line",
             "  /broadcast <text>   — server-wide broadcast popup (admin)",
