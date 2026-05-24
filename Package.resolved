@@ -1,5 +1,5 @@
 {
-  "originHash" : "0240ac1a65a3fbe9f2b556efb78dd5b94e2ba6708f14286f41d50a0cf8d60268",
+  "originHash" : "b0226d5e1ee68acf66d4816a2bd3284027c7542038fb86c856dfd0be62499956",
   "pins" : [
     {
       "identity" : "grdb.swift",
@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/franckjej/heidrun-protocol.git",
       "state" : {
-        "branch" : "debug/userlist-instrumentation",
-        "revision" : "3f1eab39d4554a0a0018be82e2fe1ebd517e1e30"
+        "revision" : "4aee742527c67e398be081e769de978a9d3fe730",
+        "version" : "1.0.0-rc3"
       }
     },
     {
