@@ -51,14 +51,15 @@ login = "admin"
 password = "admin"
 nickname = "Admin"
 
-# Tracker registration. Each entry is mobius-compatible
-# `host[:port][:password]` — port defaults to 5498, password is empty
-# for public trackers. Omit / empty disables tracker registration
-# entirely. The announcer sends one UDP packet to each tracker every
-# 5 minutes; failed registrations are logged and skipped.
+# Tracker registration. Each entry is `host[:port][:password]` — port
+# is the tracker's UDP registration port, default 5499 (NOT 5498, which
+# is the client-side TCP list port); password is empty for public
+# trackers. Omit / empty disables tracker registration entirely. The
+# announcer sends one UDP packet to each tracker every 5 minutes;
+# failed registrations are logged and skipped.
 # trackers = [
 #     "hltracker.com",
-#     "private.example:5498:my-tracker-password"
+#     "private.example:5499:my-tracker-password"
 # ]
 # tracker_description = "Heidrun on hosting.tastybytes.org"
 

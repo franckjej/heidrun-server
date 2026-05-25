@@ -175,14 +175,16 @@ services:
       # HEIDRUN_AGREEMENT: "Welcome to the server. Be kind."
 
       # ---------------------------------------------------------------
-      # TRACKER REGISTRATION (mobius-compatible host[:port][:password])
+      # TRACKER REGISTRATION (host[:port][:password])
       # ---------------------------------------------------------------
 
       # Comma-separated list. Omit / empty to disable. Each entry is
-      # `host`, `host:port`, or `host:port:password`. Default port is
-      # 5498. The announcer sends one UDP packet to each tracker every
-      # 5 minutes; failed registrations are logged and skipped.
-      # HEIDRUN_TRACKERS: "hltracker.com,private.example:5498:secret"
+      # `host`, `host:port`, or `host:port:password`. The port is the
+      # tracker's UDP registration/discovery port — default 5499. (Note:
+      # 5498 is the *client* TCP list port; registering on it makes the
+      # server silently never appear.) The announcer sends one UDP packet
+      # to each tracker every 5 minutes; failures are logged and skipped.
+      # HEIDRUN_TRACKERS: "hltracker.com,tracker.preterhuman.net,tracker.tildeverse.org"
 
       # Free-text description shown in tracker listings (falls back to
       # HEIDRUN_SERVER_NAME if unset).

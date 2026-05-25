@@ -154,7 +154,7 @@ built-in defaults.**
 | `HEIDRUN_ADMIN_LOGIN` | `admin` | Login for the bootstrap admin (only seeded on a fresh DB) |
 | `HEIDRUN_ADMIN_PASSWORD` | `admin` | Password for the bootstrap admin |
 | `HEIDRUN_ADMIN_NICKNAME` | `Admin` | Nickname for the bootstrap admin |
-| `HEIDRUN_TRACKERS` | _(empty)_ | Comma-separated `host[:port][:password]` list of trackers to register with (mobius-compatible). Empty disables tracker registration |
+| `HEIDRUN_TRACKERS` | _(empty)_ | Comma-separated `host[:port][:password]` list of trackers to register with. Port is the UDP registration port (default **5499**; 5498 is the client list port). Empty disables tracker registration |
 | `HEIDRUN_TRACKER_DESCRIPTION` | _(server name)_ | Free-text description shown in tracker listings |
 | `HEIDRUN_TLS_PORT` | _(unset)_ | Sibling TLS control port. Transfer TLS is `tls_port + 1`. Unset / 0 disables TLS entirely |
 | `HEIDRUN_TLS_CERTIFICATE` | _(unset)_ | Path to PEM-encoded TLS certificate chain |
@@ -451,11 +451,17 @@ end up with an unencrypted listener by accident.
 ### Tracker registration
 
 When `HEIDRUN_TRACKERS` (or the TOML `trackers = […]` array) is set,
-the server sends one mobius-compatible UDP datagram to each configured
+the server sends one UDP registration datagram to each configured
 tracker every 5 minutes. The packet advertises this server's name,
 description, control port, live user count, and an optional
 tracker-side password. Browsing Hotline clients then fetch the list
 from the tracker and connect to whatever servers appear in it.
+
+The Hotline tracker protocol uses **two separate ports**: servers
+register over **UDP 5499** (the default for entries here), while
+clients fetch the list over **TCP 5498**. Registering on 5498 by
+mistake means nothing receives the datagram and the server silently
+never appears in any listing — so tracker entries default to port 5499.
 
 **Verifying the announcer is running.** The boot log carries three
 INFO lines that tell you what the process actually picked up:
@@ -463,7 +469,7 @@ INFO lines that tell you what the process actually picked up:
 ```
 tracker configuration loaded   count=N hosts=...
 tracker announcer starting     trackers=N
-tracker registered             tracker=hltracker.com:5498 bytes=NN  (every 5 min)
+tracker registered             tracker=hltracker.com:5499 bytes=NN  (every 5 min)
 ```
 
 If you see `tracker announcer disabled (no trackers configured)`
@@ -477,7 +483,7 @@ docker exec heidrun-server env | grep TRACK
 ```
 
 **ufw + ufw-docker.** The announcer runs inside the container and
-sends outbound UDP to `tracker-host:5498`. ufw's default outbound
+sends outbound UDP to `tracker-host:5499`. ufw's default outbound
 policy is allow, but `ufw-docker`'s `after.rules` block can restrict
 container egress in setups that have been hardened. `bytes=NN` in the
 log only confirms the kernel accepted the write — not that the packet
@@ -486,14 +492,14 @@ perspective but the server doesn't appear in tracker listings, capture
 on the host to confirm the datagram actually goes out:
 
 ```bash
-sudo tcpdump -i any -n udp port 5498
+sudo tcpdump -i any -n udp port 5499
 # wait up to 5 min for the next cycle (or restart the container to
 # force an immediate first send).
 ```
 
 A successful send shows one outbound UDP packet from the host's
 public IP to the tracker. No packet on the wire = ufw / ufw-docker /
-the docker bridge is dropping it; allow outbound UDP to port 5498
+the docker bridge is dropping it; allow outbound UDP to port 5499
 from the docker network's CIDR.
 
 **Server reachability.** Trackers hand `advertisedPort` (your

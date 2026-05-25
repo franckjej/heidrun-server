@@ -4,10 +4,10 @@ import Foundation
 
 @Suite("TrackerHost.parse")
 struct TrackerHostParseTests {
-    @Test("host-only string defaults port to 5498 and password to empty")
+    @Test("host-only string defaults port to 5499 and password to empty")
     func hostOnly() {
         let parsed = TrackerHost.parse("hltracker.com")
-        #expect(parsed == TrackerHost(host: "hltracker.com", port: 5498, password: ""))
+        #expect(parsed == TrackerHost(host: "hltracker.com", port: 5499, password: ""))
     }
 
     @Test("host:port form uses the specified port")
@@ -45,10 +45,10 @@ struct TrackerHostParseTests {
         #expect(TrackerHost.parse(":5498") == nil)
     }
 
-    @Test("non-numeric port falls back to 5498 rather than rejecting")
+    @Test("non-numeric port falls back to 5499 rather than rejecting")
     func portFallback() {
         let parsed = TrackerHost.parse("hltracker.com:not-a-port")
-        #expect(parsed == TrackerHost(host: "hltracker.com", port: 5498, password: ""))
+        #expect(parsed == TrackerHost(host: "hltracker.com", port: 5499, password: ""))
     }
 }
 
