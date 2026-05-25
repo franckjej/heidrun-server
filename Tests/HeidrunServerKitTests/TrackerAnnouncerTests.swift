@@ -117,7 +117,8 @@ struct TrackerAnnouncerTests {
             0x00, 0x00, 0x00, 0x01,
             0x09, 0x54, 0x65, 0x73, 0x74, 0x20, 0x53, 0x65, 0x72, 0x76,
             0x04, 0x46, 0x6f, 0x6f, 0x7a,
-            0x00
+            0x00,                                   // loginLen = 0 (new-version trailing)
+            0x00                                    // passLen = 0
         ])
         let captured = await recorder.sends
         #expect(captured.first?.packet == expected)
@@ -206,7 +207,7 @@ struct TrackerAnnouncerTests {
         let captured = await recorder.sends
         #expect(captured.count == 3)
         // passID lives at byte offset 8 in the prefix: skip 0001 (ver),
-        // port, userCount, tlsPort → 8 bytes — then 4 bytes of passID
+        // port, userCount, reserved → 8 bytes — then 4 bytes of passID
         // big-endian.
         let passIDBytes = captured.map { $0.packet.subdata(in: 8..<12) }
         #expect(passIDBytes[0] == passIDBytes[1])

@@ -29,7 +29,6 @@ public actor TrackerAnnouncer {
     private let serverName: String
     private let announceDescription: String
     private let advertisedPort: UInt16
-    private let tlsPort: UInt16
     private let userCountProvider: UserCountProvider
     private let send: DatagramSender
     private let interval: Duration
@@ -50,7 +49,6 @@ public actor TrackerAnnouncer {
         serverName: String,
         announceDescription: String,
         advertisedPort: UInt16,
-        tlsPort: UInt16 = 0,
         userCountProvider: @escaping UserCountProvider,
         send: @escaping DatagramSender,
         interval: Duration = TrackerAnnouncer.updateInterval,
@@ -60,7 +58,6 @@ public actor TrackerAnnouncer {
         self.serverName = serverName
         self.announceDescription = announceDescription
         self.advertisedPort = advertisedPort
-        self.tlsPort = tlsPort
         self.userCountProvider = userCountProvider
         self.send = send
         self.interval = interval
@@ -110,7 +107,6 @@ public actor TrackerAnnouncer {
             let registration = TrackerRegistration(
                 port: advertisedPort,
                 userCount: userCount,
-                tlsPort: tlsPort,
                 passID: passID,
                 name: serverName,
                 description: announceDescription,

@@ -323,7 +323,6 @@ public actor HeidrunServer {
                 serverName: configuration.serverName,
                 announceDescription: announceDescription,
                 advertisedPort: boundPort,
-                tlsPort: boundTLSPort,
                 userCountProvider: {
                     let live = await registrySnapshot.snapshot()
                     return UInt16(clamping: live.count)
