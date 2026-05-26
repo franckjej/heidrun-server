@@ -64,6 +64,23 @@ struct ServerConfigurationFileTests {
         #expect(ServerConfigurationFile().resolved(environment: ["HEIDRUN_NEWS_MODE": "bogus"]).newsMode == .threaded)
     }
 
+    @Test("news_reset defaults to nil; file + env parse flat/threaded/all with aliases")
+    func newsResetResolution() {
+        // Unset → no reset.
+        #expect(ServerConfigurationFile().resolved(environment: [:]).newsReset == nil)
+        // TOML key.
+        var file = ServerConfigurationFile()
+        file.newsReset = "flat"
+        #expect(file.resolved(environment: [:]).newsReset == .flat)
+        // Env overrides the file; aliases resolve.
+        #expect(file.resolved(environment: ["HEIDRUN_NEWS_RESET": "all"]).newsReset == .all)
+        #expect(file.resolved(environment: ["HEIDRUN_NEWS_RESET": "both"]).newsReset == .all)
+        #expect(file.resolved(environment: ["HEIDRUN_NEWS_RESET": "plain"]).newsReset == .flat)
+        #expect(file.resolved(environment: ["HEIDRUN_NEWS_RESET": "threaded"]).newsReset == .threaded)
+        // Unknown value → nil (no accidental wipe).
+        #expect(ServerConfigurationFile().resolved(environment: ["HEIDRUN_NEWS_RESET": "bogus"]).newsReset == nil)
+    }
+
     @Test("load returns LoadError.unreadable for a missing file")
     func unreadableOnMissingFile() {
         do {

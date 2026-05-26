@@ -151,6 +151,9 @@ built-in defaults.**
 | `HEIDRUN_AGREEMENT` | _(unset)_ | Banner text pushed after login (transID 109) |
 | `HEIDRUN_DB_PATH` | _(in-memory)_ | SQLite file for accounts |
 | `HEIDRUN_FILES_ROOT` | _(tempdir)_ | Directory the file ops operate on |
+| `HEIDRUN_NEWS_PATH` | _(in-memory)_ | JSON snapshot file for news state (plain feed + threaded tree). Unset keeps news in memory — it wipes on restart |
+| `HEIDRUN_NEWS_MODE` | `threaded` | `threaded` serves Hotline 1.5+ categories/articles (legacy clients still see the flat feed); `flat` (alias `plain`) presents as a pre-1.5 board — caps the advertised version below 151 and refuses threaded-news transactions |
+| `HEIDRUN_NEWS_RESET` | _(unset)_ | One-shot startup wipe: `flat`, `threaded`, or `all` (aliases `plain` / `both`). Clears the chosen store and re-persists the empty snapshot before serving. Operator-driven — set, deploy once, then unset so later restarts keep accumulated news |
 | `HEIDRUN_ADMIN_LOGIN` | `admin` | Login for the bootstrap admin (only seeded on a fresh DB) |
 | `HEIDRUN_ADMIN_PASSWORD` | `admin` | Password for the bootstrap admin |
 | `HEIDRUN_ADMIN_NICKNAME` | `Admin` | Nickname for the bootstrap admin |
@@ -162,6 +165,7 @@ built-in defaults.**
 | `HEIDRUN_BANNER_PATH` | _(unset)_ | Image file the server delivers via the 212 `downloadBanner` transaction. Loaded into memory at startup; unset / empty disables the banner |
 | `HEIDRUN_BANNER_KIND` | `jpeg` | Format hint sent in the 212 reply (field 152). One of `jpeg`, `gif`, `bmp`, `pict`, `url` |
 | `HEIDRUN_LOG_LEVEL` | `info` | swift-log level: `trace` / `debug` / `info` / `notice` / `warning` / `error` / `critical` |
+| `TZ` | _(UTC)_ | Standard Unix timezone for the container — controls the timezone stamped onto flat-news post dates (e.g. `Europe/Berlin`). Needs `tzdata` in the image (the Docker image installs it) |
 
 ### TOML config file
 
@@ -173,6 +177,9 @@ server_name = "Heidrun"
 log_level = "info"
 db_path = "/var/lib/heidrun/heidrun.sqlite"
 files_root = "/var/lib/heidrun/files"
+news_state_path = "/var/lib/heidrun/heidrun.news.json"
+news_mode = "threaded"          # or "flat"
+# news_reset = "all"            # one-shot wipe — set, deploy once, then unset
 
 [bootstrap_admin]
 login = "admin"

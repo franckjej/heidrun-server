@@ -78,6 +78,38 @@ struct PlainNewsTests {
         #expect(ClientSession.plainNewsDateString(Date()).split(separator: " ").count == 5)
     }
 
+    @Test("reset wipes only the scoped store(s)")
+    func resetScopes() async {
+        let threadedSeed = [
+            BundleNode(
+                name: "General",
+                kind: .category,
+                posts: [NewsPost(title: "Hi", author: "Sysop", body: "Welcome")]
+            )
+        ]
+        func freshTree() -> NewsTree {
+            NewsTree(seed: NewsTree.Seed(plain: ["a post"], threaded: threadedSeed))
+        }
+
+        // .flat clears the plain feed, keeps the threaded tree.
+        let flatTree = freshTree()
+        await flatTree.reset(.flat)
+        #expect(await flatTree.plainFeed().isEmpty)
+        #expect(await flatTree.children(at: [])?.isEmpty == false)
+
+        // .threaded clears the tree, keeps the plain feed.
+        let threadedTree = freshTree()
+        await threadedTree.reset(.threaded)
+        #expect(await threadedTree.plainFeed() == "a post")
+        #expect(await threadedTree.children(at: [])?.isEmpty == true)
+
+        // .all clears both.
+        let allTree = freshTree()
+        await allTree.reset(.all)
+        #expect(await allTree.plainFeed().isEmpty)
+        #expect(await allTree.children(at: [])?.isEmpty == true)
+    }
+
     @Test("hairline is a dashed line; plainFeed is newest-first")
     func feedHairline() async {
         #expect(NewsTree.plainNewsSeparator.allSatisfy { $0 == "-" })

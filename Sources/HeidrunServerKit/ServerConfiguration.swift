@@ -52,6 +52,11 @@ public struct ServerConfiguration: Sendable {
     /// Threaded (default) vs flat news. See `NewsMode`.
     public var newsMode: NewsMode
 
+    /// One-shot startup news wipe (`HEIDRUN_NEWS_RESET`). `nil` = no
+    /// reset. Operator-driven like `resetAdminPermissions`: set, deploy
+    /// once, unset. See `NewsResetScope`.
+    public var newsReset: NewsResetScope?
+
     /// Version actually sent in the login reply. `flat` news caps it
     /// below the Hotline 1.5 threshold (151) so clients use the plain
     /// bulletin board instead of attempting threaded news.
@@ -144,6 +149,7 @@ public struct ServerConfiguration: Sendable {
         agreement: String? = nil,
         advertisedVersion: UInt16 = 185,
         newsMode: NewsMode = .threaded,
+        newsReset: NewsResetScope? = nil,
         newsSeed: NewsTree.Seed? = nil,
         accountStorePath: String? = nil,
         passwordRounds: Int = PasswordHash.defaultRounds,
@@ -168,6 +174,7 @@ public struct ServerConfiguration: Sendable {
         self.agreement = agreement
         self.advertisedVersion = advertisedVersion
         self.newsMode = newsMode
+        self.newsReset = newsReset
         self.newsSeed = newsSeed
         self.accountStorePath = accountStorePath
         self.passwordRounds = passwordRounds

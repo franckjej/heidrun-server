@@ -46,6 +46,17 @@ public actor HeidrunServer {
     /// the session reads zero bytes forever. (See
     /// `feedback_nio_child_channel_init` for the war story.)
     public func start() async throws -> UInt16 {
+        // One-shot news wipe: when an operator sets HEIDRUN_NEWS_RESET
+        // (or news_reset in TOML), clear the chosen store(s) and
+        // re-persist the empty snapshot before serving. Operator-driven
+        // like resetAdminPermissions — flip it on, deploy once, flip it
+        // off so subsequent restarts don't wipe accumulated news.
+        if let scope = configuration.newsReset {
+            await news.reset(scope)
+            serverLogger.info("news reset on startup (HEIDRUN_NEWS_RESET)", metadata: [
+                "scope": "\(scope.rawValue)"
+            ])
+        }
         let accountStore = try AccountStore(
             path: configuration.accountStorePath,
             passwordRounds: configuration.passwordRounds

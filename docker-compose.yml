@@ -178,6 +178,13 @@ services:
       # threaded-news transactions). "plain" is an alias for "flat".
       # HEIDRUN_NEWS_MODE: "threaded"
 
+      # One-shot startup news wipe. Set to "flat", "threaded", or "all"
+      # ("plain"/"both" aliases) to clear the chosen store and re-persist
+      # an empty snapshot before serving — then COMMENT IT OUT AGAIN and
+      # redeploy, or the next restart wipes news every time. Operator-
+      # driven, like HEIDRUN_RESET_ADMIN_PERMISSIONS.
+      # HEIDRUN_NEWS_RESET: "all"
+
       # ---------------------------------------------------------------
       # POLICY
       # ---------------------------------------------------------------

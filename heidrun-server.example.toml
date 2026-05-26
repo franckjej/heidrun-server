@@ -7,7 +7,9 @@
 # HEIDRUN_LOG_LEVEL, HEIDRUN_TRACKERS, HEIDRUN_TRACKER_DESCRIPTION,
 # HEIDRUN_TLS_PORT, HEIDRUN_TLS_CERTIFICATE, HEIDRUN_TLS_PRIVATE_KEY,
 # HEIDRUN_BANNER_PATH, HEIDRUN_BANNER_KIND,
+# HEIDRUN_NEWS_PATH, HEIDRUN_NEWS_MODE, HEIDRUN_NEWS_RESET,
 # HEIDRUN_IDLE_AWAY_THRESHOLD, HEIDRUN_IDLE_AWAY_POLL) override whatever is set here.
+# TZ sets the container timezone stamped onto flat-news post dates.
 #
 # Every key is optional; missing keys fall back to built-in defaults.
 
@@ -50,6 +52,15 @@ files_root = "/var/lib/heidrun/files"
 # below 151 and rejects threaded-news transactions. "plain" is an alias
 # for "flat". Env override: HEIDRUN_NEWS_MODE.
 # news_mode = "threaded"
+
+# One-shot startup news wipe. Set to "flat", "threaded", or "all"
+# ("plain" aliases "flat", "both" aliases "all") to clear the chosen
+# store and re-persist an empty snapshot before the server starts
+# serving. Operator-driven like reset_admin_permissions — set it,
+# deploy once, then unset so subsequent restarts keep accumulated
+# news. Omit (or leave unset) for no reset. Env override:
+# HEIDRUN_NEWS_RESET.
+# news_reset = "all"
 
 # Seeded only when the accounts table is empty (i.e. first startup
 # against a fresh DB). Operators should change these credentials via

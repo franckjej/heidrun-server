@@ -1,6 +1,25 @@
 import Foundation
 import HeidrunCore
 
+/// One-shot startup news wipe selector (`HEIDRUN_NEWS_RESET` / the
+/// `news_reset` TOML key). `nil` (unset / unrecognised) means no reset.
+public enum NewsResetScope: String, Sendable, CaseIterable {
+    case flat
+    case threaded
+    case all
+
+    /// Map an operator string to a scope. `plain` aliases `flat`,
+    /// `both` aliases `all`; anything else (incl. nil) → `nil` = no reset.
+    public init?(parsing raw: String?) {
+        switch raw?.lowercased() {
+        case "flat", "plain": self = .flat
+        case "threaded": self = .threaded
+        case "all", "both": self = .all
+        default: return nil
+        }
+    }
+}
+
 /// In-memory news store. Owns the legacy plain feed (a chronological
 /// list of strings the 101 transaction joins with newlines) and the
 /// threaded news tree (folders + categories + posts). Lives for the
@@ -54,6 +73,17 @@ public actor NewsTree {
     /// Append a new plain-news post.
     public func appendPlainPost(_ stamped: String) {
         plain.append(stamped)
+        persist()
+    }
+
+    /// One-shot wipe of the selected news store(s), then persist so the
+    /// snapshot reflects the empty state. Driven by `HEIDRUN_NEWS_RESET`.
+    public func reset(_ scope: NewsResetScope) {
+        switch scope {
+        case .flat:     plain = []
+        case .threaded: threaded = []
+        case .all:      plain = []; threaded = []
+        }
         persist()
     }
 

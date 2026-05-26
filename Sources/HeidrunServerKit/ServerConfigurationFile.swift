@@ -35,6 +35,9 @@ public struct ServerConfigurationFile: Codable, Sendable {
     /// News mode: `"threaded"` (default) or `"flat"` (`"plain"` alias).
     /// See `NewsMode`. Unknown values fall back to threaded.
     public var newsMode: String?
+    /// One-shot startup news wipe: `"flat"` / `"threaded"` / `"all"`
+    /// (unset = no reset). See `NewsResetScope`. Set, deploy once, unset.
+    public var newsReset: String?
     public var agreement: String?
     public var bootstrapAdmin: BootstrapAdminFile?
     /// Mobius-style tracker endpoints, each `host[:port][:password]`.
@@ -97,6 +100,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
         filesRoot: String? = nil,
         newsStatePath: String? = nil,
         newsMode: String? = nil,
+        newsReset: String? = nil,
         agreement: String? = nil,
         bootstrapAdmin: BootstrapAdminFile? = nil,
         trackers: [String]? = nil,
@@ -118,6 +122,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
         self.filesRoot = filesRoot
         self.newsStatePath = newsStatePath
         self.newsMode = newsMode
+        self.newsReset = newsReset
         self.agreement = agreement
         self.bootstrapAdmin = bootstrapAdmin
         self.trackers = trackers
@@ -141,6 +146,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
         case filesRoot = "files_root"
         case newsStatePath = "news_state_path"
         case newsMode = "news_mode"
+        case newsReset = "news_reset"
         case agreement
         case bootstrapAdmin = "bootstrap_admin"
         case trackers
@@ -212,6 +218,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
         // News mode — env wins over file; unknown values fall back to
         // threaded inside `NewsMode(parsing:)`.
         let resolvedNewsMode = NewsMode(parsing: environment["HEIDRUN_NEWS_MODE"] ?? newsMode)
+        // One-shot news wipe — env wins; nil (unset/unknown) = no reset.
+        let resolvedNewsReset = NewsResetScope(parsing: environment["HEIDRUN_NEWS_RESET"] ?? newsReset)
 
         let resolvedAdmin = ServerConfiguration.BootstrapAdmin(
             login: environment["HEIDRUN_ADMIN_LOGIN"]
@@ -311,6 +319,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
             serverName: resolvedServerName,
             agreement: resolvedAgreement,
             newsMode: resolvedNewsMode,
+            newsReset: resolvedNewsReset,
             accountStorePath: resolvedDBPath,
             bootstrapAdmin: resolvedAdmin,
             filesRootPath: resolvedFilesRoot,
