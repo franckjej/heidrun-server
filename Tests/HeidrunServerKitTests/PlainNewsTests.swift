@@ -56,4 +56,25 @@ struct PlainNewsTests {
             #expect(feed.contains("breaking story"))
         }
     }
+
+    @Test("formatPlainNewsPost renders the classic BBS header + normalises newlines")
+    func classicPostFormat() {
+        let post = ClientSession.formatPlainNewsPost(
+            nickname: "Alice",
+            body: "line1\nline2",
+            date: Date(timeIntervalSince1970: 0)
+        )
+        #expect(post.hasPrefix("From Alice ("))
+        // `From <nick> (<date>):` then a blank line then the CR-normalised body.
+        #expect(post.contains("):\r\rline1\rline2"))
+        #expect(!post.contains("\n"))
+    }
+
+    @Test("plainFeed joins posts newest-first with the underscore hairline")
+    func feedHairline() async {
+        let tree = NewsTree(seed: NewsTree.Seed(plain: ["first", "second"]))
+        let feed = await tree.plainFeed()
+        #expect(feed == "second\r\(NewsTree.plainNewsSeparator)\rfirst")
+        #expect(NewsTree.plainNewsSeparator.allSatisfy { $0 == "_" })
+    }
 }
