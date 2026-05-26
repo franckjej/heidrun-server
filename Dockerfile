@@ -101,8 +101,10 @@ RUN --mount=type=secret,id=gh_token,required=true \
 FROM swift:6.2-jammy-slim AS runtime
 
 # GRDB dlopens libsqlite3 at runtime; the slim image doesn't include it.
+# tzdata lets a `TZ=Area/City` (set via compose) resolve to a real zone
+# so news-post timestamps render in the operator's local time, not UTC.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libsqlite3-0 \
+ && apt-get install -y --no-install-recommends libsqlite3-0 tzdata \
  && rm -rf /var/lib/apt/lists/*
 
 # A non-root account owns the state directories. /var/lib/heidrun

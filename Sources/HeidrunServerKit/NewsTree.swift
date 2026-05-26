@@ -40,15 +40,15 @@ public actor NewsTree {
         self.persistencePath = persistencePath
     }
 
-    /// Underscore "hairline" that separates plain-news posts, matching
-    /// the classic Hotline bulletin-board look.
-    static let plainNewsSeparator = String(repeating: "_", count: 58)
+    /// Dashed "hairline" that trails each plain-news post, giving the
+    /// classic Hotline bulletin-board separator between entries.
+    static let plainNewsSeparator = String(repeating: "-", count: 58)
 
-    /// Plain news feed as one blob — posts newest-first, separated by the
-    /// underscore hairline (classic Hotline BBS style). The 101 reply is
-    /// read top-down by the client.
+    /// Plain news feed as one blob — posts newest-first. Each post already
+    /// carries its trailing hairline (see `formatPlainNewsPost`), so this
+    /// just joins them with a CR. The 101 reply is read top-down.
     public func plainFeed() -> String {
-        plain.reversed().joined(separator: "\r\(Self.plainNewsSeparator)\r")
+        plain.reversed().joined(separator: "\r")
     }
 
     /// Append a new plain-news post.

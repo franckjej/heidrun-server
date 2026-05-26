@@ -37,22 +37,27 @@ extension ClientSession {
     }
 
     /// Render a plain-news post in the classic Hotline "BBS" style:
-    /// `From <nick> (<date>):`, a blank line, then the body. Posts are
-    /// joined with an underscore hairline by `NewsTree.plainFeed()`.
-    /// Newlines are normalised to `\r` (Hotline's line ending).
+    /// `From <nick> (<date>):`, a blank line, the body, then a trailing
+    /// underscore hairline. The hairline is part of the post (not just
+    /// inserted by `plainFeed()` joins) so it rides along with the
+    /// transID-102 push too — clients that prepend the pushed post show
+    /// the separator immediately, without a reload. Newlines are
+    /// normalised to `\r` (Hotline's line ending).
     static func formatPlainNewsPost(nickname: String, body: String, date: Date) -> String {
         let normalizedBody = body
             .replacingOccurrences(of: "\r\n", with: "\r")
             .replacingOccurrences(of: "\n", with: "\r")
-        return "From \(nickname) (\(plainNewsDateString(date))):\r\r\(normalizedBody)"
+        return "From \(nickname) (\(plainNewsDateString(date))):\r\r\(normalizedBody)\r\(NewsTree.plainNewsSeparator)"
     }
 
-    /// Classic Hotline news date, e.g. `Wed 24/Feb/2026 02:15:18 PM`.
-    /// `en_US_POSIX` keeps the rendering stable across server locales.
+    /// Classic Hotline news date with timezone, e.g.
+    /// `Wed 24/Feb/2026 02:15:18 PM CET`. `en_US_POSIX` keeps the
+    /// month/weekday names stable across server locales; the zone token
+    /// reflects the server's local timezone.
     static func plainNewsDateString(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "EEE dd/MMM/yyyy hh:mm:ss a"
+        formatter.dateFormat = "EEE dd/MMM/yyyy hh:mm:ss a zzz"
         return formatter.string(from: date)
     }
 }

@@ -57,7 +57,7 @@ struct PlainNewsTests {
         }
     }
 
-    @Test("formatPlainNewsPost renders the classic BBS header + normalises newlines")
+    @Test("formatPlainNewsPost: classic header, CR newlines, trailing hairline")
     func classicPostFormat() {
         let post = ClientSession.formatPlainNewsPost(
             nickname: "Alice",
@@ -67,14 +67,25 @@ struct PlainNewsTests {
         #expect(post.hasPrefix("From Alice ("))
         // `From <nick> (<date>):` then a blank line then the CR-normalised body.
         #expect(post.contains("):\r\rline1\rline2"))
+        // Hairline rides along with the post (so the push carries it too).
+        #expect(post.hasSuffix("\r\(NewsTree.plainNewsSeparator)"))
         #expect(!post.contains("\n"))
     }
 
-    @Test("plainFeed joins posts newest-first with the underscore hairline")
+    @Test("plainNewsDateString carries a timezone token")
+    func dateHasTimezone() {
+        // EEE dd/MMM/yyyy hh:mm:ss a zzz → five space-delimited tokens.
+        #expect(ClientSession.plainNewsDateString(Date()).split(separator: " ").count == 5)
+    }
+
+    @Test("hairline is a dashed line; plainFeed is newest-first")
     func feedHairline() async {
-        let tree = NewsTree(seed: NewsTree.Seed(plain: ["first", "second"]))
+        #expect(NewsTree.plainNewsSeparator.allSatisfy { $0 == "-" })
+        let newest = ClientSession.formatPlainNewsPost(nickname: "B", body: "two", date: Date())
+        let oldest = ClientSession.formatPlainNewsPost(nickname: "A", body: "one", date: Date())
+        let tree = NewsTree(seed: NewsTree.Seed(plain: [oldest, newest]))
         let feed = await tree.plainFeed()
-        #expect(feed == "second\r\(NewsTree.plainNewsSeparator)\rfirst")
-        #expect(NewsTree.plainNewsSeparator.allSatisfy { $0 == "_" })
+        #expect(feed.hasPrefix("From B ("))            // newest first
+        #expect(feed.contains(NewsTree.plainNewsSeparator))
     }
 }

@@ -122,6 +122,12 @@ services:
       # Display name shown in client user lists + tracker listings.
       HEIDRUN_SERVER_NAME: "Heidrun"
 
+      # Server timezone (IANA name, e.g. "Europe/Berlin", "America/New_York").
+      # Drives the timestamp in classic flat-news posts and other
+      # local-time rendering. The container defaults to UTC; set your
+      # zone here. Resolves via tzdata, which the image installs.
+      TZ: "Europe/Berlin"
+
       # swift-log threshold: trace / debug / info / notice / warning /
       # error / critical. Use `debug` to get per-transaction dispatch
       # lines tagged with the client IP (remoteHost) for triage.
