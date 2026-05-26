@@ -296,6 +296,33 @@ and HTXF file transfers are encrypted end-to-end; sniffing the wire
 reveals no readable Hotline frames or file bytes. The cleartext pair
 stays bound for legacy clients, so enabling TLS is purely additive.
 
+#### Self-signed certificate (no public CA)
+
+You don't need a publicly-issued cert. The server serves whatever cert
+you give it — NIOSSL doesn't validate its own — so a self-signed pair
+works with no extra server config. Generate one (replace the CN with
+your hostname or IP):
+
+```bash
+openssl req -x509 -newkey rsa:2048 -nodes -days 825 \
+  -keyout key.pem -out cert.pem \
+  -subj "/CN=hotline.example.com"
+```
+
+Point the existing TLS settings at the two files — env
+(`HEIDRUN_TLS_CERTIFICATE=cert.pem`, `HEIDRUN_TLS_PRIVATE_KEY=key.pem`)
+or the `tls_certificate` / `tls_private_key` TOML keys — and set
+`HEIDRUN_TLS_PORT`. The same `heidrun`-readable permissions notes below
+apply.
+
+On first connect the Heidrun client shows the certificate's SHA-256
+fingerprint and asks you to trust it (trust-on-first-use), then pins it
+for that bookmark — later connects are silent. If you regenerate the
+cert, clients warn that the fingerprint changed and let you re-trust.
+For a publicly-issued cert instead, use the Let's Encrypt flow below.
+
+#### Let's Encrypt (publicly-issued)
+
 **1. Get a certificate.** Production deploys use a publicly-issued
 TLS cert (Let's Encrypt is the default choice). Since HeidrunServer
 doesn't speak HTTP, ACME HTTP-01 isn't an option — use **DNS-01**:
