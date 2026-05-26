@@ -166,6 +166,12 @@ services:
       # to override.
       # HEIDRUN_NEWS_PATH: "/var/lib/heidrun/heidrun.news.json"
 
+      # News mode: "threaded" (default) or "flat". "flat" presents the
+      # server as a pre-1.5 server so every client uses the flat
+      # bulletin board (caps the advertised version < 151 and rejects
+      # threaded-news transactions). "plain" is an alias for "flat".
+      # HEIDRUN_NEWS_MODE: "threaded"
+
       # ---------------------------------------------------------------
       # POLICY
       # ---------------------------------------------------------------

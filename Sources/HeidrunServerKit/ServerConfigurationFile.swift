@@ -32,6 +32,9 @@ public struct ServerConfigurationFile: Codable, Sendable {
     public var dbPath: String?
     public var filesRoot: String?
     public var newsStatePath: String?
+    /// News mode: `"threaded"` (default) or `"flat"` (`"plain"` alias).
+    /// See `NewsMode`. Unknown values fall back to threaded.
+    public var newsMode: String?
     public var agreement: String?
     public var bootstrapAdmin: BootstrapAdminFile?
     /// Mobius-style tracker endpoints, each `host[:port][:password]`.
@@ -93,6 +96,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
         dbPath: String? = nil,
         filesRoot: String? = nil,
         newsStatePath: String? = nil,
+        newsMode: String? = nil,
         agreement: String? = nil,
         bootstrapAdmin: BootstrapAdminFile? = nil,
         trackers: [String]? = nil,
@@ -113,6 +117,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
         self.dbPath = dbPath
         self.filesRoot = filesRoot
         self.newsStatePath = newsStatePath
+        self.newsMode = newsMode
         self.agreement = agreement
         self.bootstrapAdmin = bootstrapAdmin
         self.trackers = trackers
@@ -135,6 +140,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
         case dbPath = "db_path"
         case filesRoot = "files_root"
         case newsStatePath = "news_state_path"
+        case newsMode = "news_mode"
         case agreement
         case bootstrapAdmin = "bootstrap_admin"
         case trackers
@@ -202,6 +208,10 @@ public struct ServerConfigurationFile: Codable, Sendable {
                 .appendingPathExtension("news.json")
                 .path
         }()
+
+        // News mode — env wins over file; unknown values fall back to
+        // threaded inside `NewsMode(parsing:)`.
+        let resolvedNewsMode = NewsMode(parsing: environment["HEIDRUN_NEWS_MODE"] ?? newsMode)
 
         let resolvedAdmin = ServerConfiguration.BootstrapAdmin(
             login: environment["HEIDRUN_ADMIN_LOGIN"]
@@ -300,6 +310,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
             bindHost: resolvedBindHost,
             serverName: resolvedServerName,
             agreement: resolvedAgreement,
+            newsMode: resolvedNewsMode,
             accountStorePath: resolvedDBPath,
             bootstrapAdmin: resolvedAdmin,
             filesRootPath: resolvedFilesRoot,

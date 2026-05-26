@@ -1,6 +1,31 @@
 import Foundation
 import HeidrunCore
 
+/// How the server presents its news system. The Hotline protocol has no
+/// explicit "news mode" bit — a client chooses threaded vs flat purely
+/// from the server's advertised version (`< 151` ⇒ flat pre-1.5 board,
+/// `≥ 151` ⇒ threaded). `flat` therefore works by capping the advertised
+/// version and refusing threaded transactions.
+public enum NewsMode: String, Sendable, CaseIterable {
+    /// Threaded categories/bundles/articles for Hotline 1.5+ clients,
+    /// with the plain feed still served to legacy clients. Default.
+    case threaded
+    /// Present as a pre-1.5 server: every client uses the flat bulletin
+    /// board (101/103). Caps the advertised version below 151 and
+    /// rejects threaded-news transactions.
+    case flat
+
+    /// Map an operator-supplied string to a mode. Unknown values fall
+    /// back to `.threaded` (the full-featured default); `plain` is an
+    /// accepted alias for `flat`.
+    public init(parsing raw: String?) {
+        switch raw?.lowercased() {
+        case "flat", "plain": self = .flat
+        default: self = .threaded
+        }
+    }
+}
+
 /// Construction-time config for one `HeidrunServer` instance.
 public struct ServerConfiguration: Sendable {
     /// Credentials the server should seed on first startup when the
@@ -24,6 +49,16 @@ public struct ServerConfiguration: Sendable {
     public var serverName: String
     public var agreement: String?
     public var advertisedVersion: UInt16
+    /// Threaded (default) vs flat news. See `NewsMode`.
+    public var newsMode: NewsMode
+
+    /// Version actually sent in the login reply. `flat` news caps it
+    /// below the Hotline 1.5 threshold (151) so clients use the plain
+    /// bulletin board instead of attempting threaded news.
+    public var effectiveAdvertisedVersion: UInt16 {
+        newsMode == .flat ? min(advertisedVersion, 150) : advertisedVersion
+    }
+
     public var newsSeed: NewsTree.Seed?
     /// On-disk SQLite path. `nil` = in-memory (default for tests).
     public var accountStorePath: String?
@@ -108,6 +143,7 @@ public struct ServerConfiguration: Sendable {
         serverName: String = "Heidrun",
         agreement: String? = nil,
         advertisedVersion: UInt16 = 185,
+        newsMode: NewsMode = .threaded,
         newsSeed: NewsTree.Seed? = nil,
         accountStorePath: String? = nil,
         passwordRounds: Int = PasswordHash.defaultRounds,
@@ -131,6 +167,7 @@ public struct ServerConfiguration: Sendable {
         self.serverName = serverName
         self.agreement = agreement
         self.advertisedVersion = advertisedVersion
+        self.newsMode = newsMode
         self.newsSeed = newsSeed
         self.accountStorePath = accountStorePath
         self.passwordRounds = passwordRounds

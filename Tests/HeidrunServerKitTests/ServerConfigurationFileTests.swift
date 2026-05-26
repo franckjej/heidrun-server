@@ -39,6 +39,31 @@ struct ServerConfigurationFileTests {
         #expect(file.bootstrapAdmin?.password == "s3cret")
     }
 
+    @Test("news_mode defaults to threaded with the full advertised version")
+    func newsModeDefaultsThreaded() {
+        let config = ServerConfigurationFile().resolved(environment: [:])
+        #expect(config.newsMode == .threaded)
+        #expect(config.effectiveAdvertisedVersion == 185)
+    }
+
+    @Test("news_mode = flat caps the advertised version below Hotline 1.5")
+    func newsModeFlatCapsVersion() {
+        var file = ServerConfigurationFile()
+        file.newsMode = "flat"
+        let config = file.resolved(environment: [:])
+        #expect(config.newsMode == .flat)
+        #expect(config.effectiveAdvertisedVersion <= 150)
+    }
+
+    @Test("HEIDRUN_NEWS_MODE overrides the file; unknown values fall back to threaded")
+    func newsModeEnvOverride() {
+        var file = ServerConfigurationFile()
+        file.newsMode = "threaded"
+        #expect(file.resolved(environment: ["HEIDRUN_NEWS_MODE": "flat"]).newsMode == .flat)
+        #expect(file.resolved(environment: ["HEIDRUN_NEWS_MODE": "plain"]).newsMode == .flat)
+        #expect(ServerConfigurationFile().resolved(environment: ["HEIDRUN_NEWS_MODE": "bogus"]).newsMode == .threaded)
+    }
+
     @Test("load returns LoadError.unreadable for a missing file")
     func unreadableOnMissingFile() {
         do {

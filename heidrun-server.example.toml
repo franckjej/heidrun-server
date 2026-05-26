@@ -43,6 +43,14 @@ files_root = "/var/lib/heidrun/files"
 # string to disable persistence (in-memory news that wipes on restart).
 # news_state_path = "/var/lib/heidrun/heidrun.news.json"
 
+# News mode. "threaded" (default) serves Hotline 1.5+ threaded
+# categories/articles to modern clients and the flat bulletin board to
+# legacy clients. "flat" presents the server as a pre-1.5 server so
+# EVERY client uses the flat board — it caps the advertised version
+# below 151 and rejects threaded-news transactions. "plain" is an alias
+# for "flat". Env override: HEIDRUN_NEWS_MODE.
+# news_mode = "threaded"
+
 # Seeded only when the accounts table is empty (i.e. first startup
 # against a fresh DB). Operators should change these credentials via
 # modifyLogin (transID 353) or a follow-up SQL update.

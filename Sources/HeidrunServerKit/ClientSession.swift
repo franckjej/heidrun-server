@@ -75,6 +75,10 @@ public actor ClientSession {
     /// Format hint sent in the 212 reply's `bannerType` field (152).
     let bannerKind: HeidrunCore.ServerBanner.Kind
 
+    /// Threaded-news transaction IDs (bundles/categories/threads +
+    /// create/delete). Refused when `configuration.newsMode == .flat`.
+    static let threadedNewsTransactions: Set<UInt16> = [370, 371, 400, 410, 381, 382, 380, 411]
+
     public init(
         registry: UserRegistry,
         news: NewsTree,
@@ -342,6 +346,20 @@ public actor ClientSession {
             "tls": "\(isTLS)",
             "fieldCount": "\(fields.count)"
         ])
+
+        // Flat news mode: refuse threaded-news transactions so a client
+        // that ignores the (capped) advertised version still falls back
+        // to the plain bulletin board instead of seeing a half-working
+        // threaded UI. Clients honouring the version never send these.
+        if configuration.newsMode == .flat,
+           Self.threadedNewsTransactions.contains(header.transactionID) {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: header.transactionID
+            ))
+            return true
+        }
+
         switch header.transactionID {
         case 107:
             await handleLogin(header: header, fields: fields)
@@ -534,7 +552,7 @@ public actor ClientSession {
 
         let reply = PacketEncoder.loginReply(
             taskNumber: header.taskNumber,
-            advertisedVersion: configuration.advertisedVersion,
+            advertisedVersion: configuration.effectiveAdvertisedVersion,
             socketID: assigned,
             serverName: configuration.serverName,
             encoding: stringEncoding
