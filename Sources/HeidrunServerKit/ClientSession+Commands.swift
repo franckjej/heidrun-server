@@ -49,6 +49,8 @@ extension ClientSession {
             await handleAwayCommand(args: args)
         case "broadcast":
             await handleBroadcastCommand(args: args)
+        case "topic":
+            await handleTopicCommand(args: args)
         case "me":
             await handleMeCommand(args: args)
         case "who", "users":
@@ -285,6 +287,7 @@ extension ClientSession {
             "  /away               — toggle your away status",
             "  /me <action>        — send an action chat line",
             "  /broadcast <text>   — server-wide broadcast popup (admin)",
+            "  /topic [text]       — show or set the public chat topic (set: admin)",
             "  /kick <socketID>    — disconnect a user by socket (admin)",
             "  /invisible          — hide from peer user lists (admin)",
             "  /visible            — re-appear in peer user lists (admin)",
@@ -337,5 +340,31 @@ extension ClientSession {
             excluding: nil
         )
         await sendSystemReply("Broadcast sent.")
+    }
+
+    /// `/topic [text]` — show or set the **public** chat topic.
+    /// `/topic` with no args reports the current topic to the sender
+    /// only (ungated — anyone may read it). `/topic <text>` sets it,
+    /// gated on `.canBroadcast` (same as `/broadcast`): persists via
+    /// `ChatSubjectStore`, then broadcasts TX 119 (Chat ID 0) to every
+    /// connected session so all clients update their header. Clearing
+    /// the topic is out of scope for now.
+    func handleTopicCommand(args: [String]) async {
+        let text = args.joined(separator: " ").trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else {
+            let current = await chatSubject.current()
+            await sendSystemReply(current.isEmpty ? "No topic set." : "Current topic: \(current)")
+            return
+        }
+        guard hasPrivilege(.canBroadcast) else {
+            await sendSystemReply("Permission denied: /topic requires the canBroadcast privilege.")
+            return
+        }
+        await chatSubject.set(text)
+        await registry.broadcast(
+            PacketEncoder.publicChatSubjectPush(subject: text, encoding: stringEncoding),
+            excluding: nil
+        )
+        await sendSystemReply("Topic set: \(text)")
     }
 }

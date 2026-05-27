@@ -47,6 +47,13 @@ public struct ServerConfiguration: Sendable {
     /// the server sits behind a reverse proxy or for local development.
     public var bindHost: String
     public var serverName: String
+    /// Initial public chat topic (seed). Empty means "no topic" — nothing
+    /// is pushed. Overridden by a persisted value once `/topic` has been
+    /// used (see `ChatSubjectStore`).
+    public var chatSubject: String
+    /// JSON persistence path for the live public chat topic. `nil` = no
+    /// persistence (topic resets to the config seed each restart).
+    public var chatSubjectStatePath: String?
     public var agreement: String?
     public var advertisedVersion: UInt16
     /// Threaded (default) vs flat news. See `NewsMode`.
@@ -146,6 +153,8 @@ public struct ServerConfiguration: Sendable {
         port: UInt16 = 5500,
         bindHost: String = "0.0.0.0",
         serverName: String = "Heidrun",
+        chatSubject: String = "",
+        chatSubjectStatePath: String? = nil,
         agreement: String? = nil,
         advertisedVersion: UInt16 = 185,
         newsMode: NewsMode = .threaded,
@@ -171,6 +180,8 @@ public struct ServerConfiguration: Sendable {
         self.port = port
         self.bindHost = bindHost
         self.serverName = serverName
+        self.chatSubject = chatSubject
+        self.chatSubjectStatePath = chatSubjectStatePath
         self.agreement = agreement
         self.advertisedVersion = advertisedVersion
         self.newsMode = newsMode

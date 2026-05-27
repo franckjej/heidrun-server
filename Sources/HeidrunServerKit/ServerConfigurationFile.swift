@@ -28,6 +28,12 @@ public struct ServerConfigurationFile: Codable, Sendable {
     public var port: UInt16?
     public var bindHost: String?
     public var serverName: String?
+    /// Public chat topic seed. Env `HEIDRUN_CHAT_SUBJECT` overrides.
+    public var chatSubject: String?
+    /// Persistence path for the live topic. Env
+    /// `HEIDRUN_CHAT_SUBJECT_PATH` overrides; otherwise derived from the
+    /// DB path as `<stem>.chatsubject.json`.
+    public var chatSubjectStatePath: String?
     public var logLevel: String?
     public var dbPath: String?
     public var filesRoot: String?
@@ -95,6 +101,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
         port: UInt16? = nil,
         bindHost: String? = nil,
         serverName: String? = nil,
+        chatSubject: String? = nil,
+        chatSubjectStatePath: String? = nil,
         logLevel: String? = nil,
         dbPath: String? = nil,
         filesRoot: String? = nil,
@@ -117,6 +125,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
         self.port = port
         self.bindHost = bindHost
         self.serverName = serverName
+        self.chatSubject = chatSubject
+        self.chatSubjectStatePath = chatSubjectStatePath
         self.logLevel = logLevel
         self.dbPath = dbPath
         self.filesRoot = filesRoot
@@ -141,6 +151,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
         case port
         case bindHost = "bind_host"
         case serverName = "server_name"
+        case chatSubject = "chat_subject"
+        case chatSubjectStatePath = "chat_subject_path"
         case logLevel = "log_level"
         case dbPath = "db_path"
         case filesRoot = "files_root"
@@ -199,9 +211,23 @@ public struct ServerConfigurationFile: Codable, Sendable {
         let resolvedServerName = environment["HEIDRUN_SERVER_NAME"]
             ?? serverName
             ?? "Heidrun"
+        let resolvedChatSubject = environment["HEIDRUN_CHAT_SUBJECT"]
+            ?? chatSubject
+            ?? ""
         let resolvedAgreement = environment["HEIDRUN_AGREEMENT"] ?? agreement
         let resolvedDBPath = environment["HEIDRUN_DB_PATH"] ?? dbPath
         let resolvedFilesRoot = environment["HEIDRUN_FILES_ROOT"] ?? filesRoot
+        let resolvedChatSubjectStatePath: String? = {
+            if let raw = environment["HEIDRUN_CHAT_SUBJECT_PATH"] { return raw }
+            if let explicit = chatSubjectStatePath { return explicit }
+            // Derive from the DB path: <stem>.chatsubject.json next to
+            // the SQLite file (mirrors the news-state derivation).
+            guard let dbPath = resolvedDBPath else { return nil }
+            let url = URL(fileURLWithPath: dbPath)
+            return url.deletingPathExtension()
+                .appendingPathExtension("chatsubject.json")
+                .path
+        }()
         let resolvedNewsStatePath: String? = {
             if let raw = environment["HEIDRUN_NEWS_PATH"] { return raw }
             if let explicit = newsStatePath { return explicit }
@@ -317,6 +343,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
             port: resolvedPort,
             bindHost: resolvedBindHost,
             serverName: resolvedServerName,
+            chatSubject: resolvedChatSubject,
+            chatSubjectStatePath: resolvedChatSubjectStatePath,
             agreement: resolvedAgreement,
             newsMode: resolvedNewsMode,
             newsReset: resolvedNewsReset,

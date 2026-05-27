@@ -12,6 +12,7 @@ public actor HeidrunServer {
     private let stringEncoding: String.Encoding
     private let registry: UserRegistry
     private let news: NewsTree
+    private let chatSubject: ChatSubjectStore
     private let transfers: TransferRegistry
     private let privateChats: PrivateChatRegistry
     private var accounts: AccountStore?
@@ -33,6 +34,10 @@ public actor HeidrunServer {
         self.news = NewsTree(
             seed: configuration.newsSeed ?? NewsTree.Seed(),
             persistencePath: configuration.newsStatePath
+        )
+        self.chatSubject = ChatSubjectStore(
+            seed: configuration.chatSubject,
+            persistencePath: configuration.chatSubjectStatePath
         )
         self.transfers = TransferRegistry()
         self.privateChats = PrivateChatRegistry()
@@ -191,6 +196,7 @@ public actor HeidrunServer {
 
         let registryCopy = self.registry
         let newsCopy = self.news
+        let chatSubjectCopy = self.chatSubject
         let transfersCopy = self.transfers
         let privateChatsCopy = self.privateChats
         let accountsCopy = accountStore
@@ -204,6 +210,7 @@ public actor HeidrunServer {
             sslContext: nil,
             registry: registryCopy,
             news: newsCopy,
+            chatSubject: chatSubjectCopy,
             accounts: accountsCopy,
             files: filesCopy,
             transfers: transfersCopy,
@@ -259,6 +266,7 @@ public actor HeidrunServer {
                 sslContext: sslContext,
                 registry: registryCopy,
                 news: newsCopy,
+                chatSubject: chatSubjectCopy,
                 accounts: accountsCopy,
                 files: filesCopy,
                 transfers: transfersCopy,
@@ -405,6 +413,7 @@ public actor HeidrunServer {
         sslContext: NIOSSLContext?,
         registry: UserRegistry,
         news: NewsTree,
+        chatSubject: ChatSubjectStore,
         accounts: AccountStore,
         files: FileVault,
         transfers: TransferRegistry,
@@ -441,6 +450,7 @@ public actor HeidrunServer {
                                 inbound: inboundStream,
                                 registry: registry,
                                 news: news,
+                                chatSubject: chatSubject,
                                 accounts: accounts,
                                 files: files,
                                 transfers: transfers,
@@ -548,6 +558,7 @@ public actor HeidrunServer {
         inbound: AsyncStream<Data>,
         registry: UserRegistry,
         news: NewsTree,
+        chatSubject: ChatSubjectStore,
         accounts: AccountStore,
         files: FileVault,
         transfers: TransferRegistry,
@@ -568,6 +579,7 @@ public actor HeidrunServer {
         let session = ClientSession(
             registry: registry,
             news: news,
+            chatSubject: chatSubject,
             accounts: accounts,
             files: files,
             transfers: transfers,

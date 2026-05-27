@@ -9,6 +9,7 @@ import HeidrunCore
 public actor ClientSession {
     let registry: UserRegistry
     let news: NewsTree
+    let chatSubject: ChatSubjectStore
     let accounts: AccountStore
     let files: FileVault
     let transfers: TransferRegistry
@@ -85,6 +86,7 @@ public actor ClientSession {
     public init(
         registry: UserRegistry,
         news: NewsTree,
+        chatSubject: ChatSubjectStore,
         accounts: AccountStore,
         files: FileVault,
         transfers: TransferRegistry,
@@ -100,6 +102,7 @@ public actor ClientSession {
     ) {
         self.registry = registry
         self.news = news
+        self.chatSubject = chatSubject
         self.accounts = accounts
         self.files = files
         self.transfers = transfers
@@ -564,6 +567,17 @@ public actor ClientSession {
             encoding: stringEncoding
         )
         try? await writer(reply)
+
+        // Public chat topic: if the operator configured/set one, push it
+        // (TX 119, Chat ID 0) so the client shows it in the public chat
+        // header immediately on connect. Empty topic → nothing sent.
+        let publicTopic = await chatSubject.current()
+        if !publicTopic.isEmpty {
+            try? await writer(PacketEncoder.publicChatSubjectPush(
+                subject: publicTopic,
+                encoding: stringEncoding
+            ))
+        }
 
         let member = UserRegistry.Member(
             socketID: assigned,

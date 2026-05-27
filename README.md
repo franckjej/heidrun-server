@@ -148,6 +148,8 @@ built-in defaults.**
 | `HEIDRUN_CONFIG` | _(unset)_ | Path to a TOML config file |
 | `HEIDRUN_PORT` | `5500` | Control port. Transfer port is always `port + 1` |
 | `HEIDRUN_SERVER_NAME` | `Heidrun` | Display name in the user list |
+| `HEIDRUN_CHAT_SUBJECT` | _(empty)_ | Initial public chat topic shown in clients' chat header. Empty = no topic. Operators can change it live with `/topic <text>` (admin) |
+| `HEIDRUN_CHAT_SUBJECT_PATH` | _(derived)_ | JSON file the live topic persists to. Defaults to `<db>.chatsubject.json` next to the SQLite file. A persisted value wins over `HEIDRUN_CHAT_SUBJECT` on restart — delete this file to re-apply the config seed |
 | `HEIDRUN_AGREEMENT` | _(unset)_ | Banner text pushed after login (transID 109) |
 | `HEIDRUN_DB_PATH` | _(in-memory)_ | SQLite file for accounts |
 | `HEIDRUN_FILES_ROOT` | _(tempdir)_ | Directory the file ops operate on |
@@ -174,6 +176,11 @@ See `heidrun-server.example.toml`. Every key is optional. Example:
 ```toml
 port = 5500
 server_name = "Heidrun"
+# Public chat topic shown to every connected client. Operators can also
+# change it live with the /topic <text> chat command (admin). Once set
+# live, the persisted value wins on restart — delete the
+# <db>.chatsubject.json file to re-apply this config value.
+chat_subject = "Welcome to tastybytes"
 log_level = "info"
 db_path = "/var/lib/heidrun/heidrun.sqlite"
 files_root = "/var/lib/heidrun/files"
@@ -641,6 +648,7 @@ never broadcast as chat, so only the sender sees the response.
 | `/away`     | toggles the `UserStatusFlags.away` bit immediately; broadcasts the new status to everyone via `userChanged` (301); confirms privately to the sender with `*** You are now away.` / `*** Welcome back.` |
 | `/me <action>` | IRC-style action chat. Broadcasts a 106 push to every session (sender included) with `isAction=true` and a mobius-style ` *<nick> <action>` line. Empty bodies surface `*** Usage: /me <action>`. |
 | `/broadcast <message>` | sends a server-wide broadcast popup (transID 355) to every connected session, including the sender so they see their own message as confirmation. Gated on the `.canBroadcast` privilege (admin-only by default). Guests / unprivileged accounts get a sender-only `*** Permission denied: …` reply. Empty bodies surface `*** Usage: /broadcast <message>`. |
+| `/topic [text]` | with no args, replies (sender-only) with the current public chat topic. With text, sets the public chat topic — gated on the `.canBroadcast` privilege (admin-only by default) — persists it and broadcasts TX 119 (Chat ID 0) to every connected client so their chat header updates live. |
 | `/kick <socketID>` | disconnects a target by their socket ID (find IDs with `/who`). Gated on the `.disconnectUsers` privilege (admin-only by default). Self-kick is refused, unknown sockets get a sender-only "no such user" reply, the kicked target's TCP connection is dropped, and every remaining session sees a `userLeft` (302). |
 | `/invisible` | hide from peer user lists. Broadcasts `userLeft` (302) so existing clients drop the row, filters subsequent `getUserList` (300) replies, and suppresses outbound `userChanged` broadcasts so status / nickname flips don't leak presence. The session stays fully connected — chat, broadcasts, file ops all reach them — they're just absent from rosters. Their own `/who` and `/whoami` still show themselves. Gated on `.disconnectUsers`. |
 | `/visible`  | re-introduce after `/invisible`: clears the registry's invisibility bit and broadcasts `userChanged` (301) so peers re-add the row with the session's current nickname / icon / status. Gated on `.disconnectUsers`. |

@@ -110,6 +110,42 @@ struct ChatCommandsTests {
         return captured
     }
 
+    /// Wait up to `timeout` for the first `privateChatSubjectChanged`
+    /// (TX 119) event on `client`. Returns the subject or throws on
+    /// timeout. Mirrors `awaitBroadcast`.
+    private static func awaitSubject(
+        _ client: any HotlineClient,
+        timeout: Duration = .seconds(2)
+    ) async throws -> String {
+        let collector = Task { () -> String? in
+            for await event in client.events {
+                if case let .privateChatSubjectChanged(_, subject) = event {
+                    return subject
+                }
+            }
+            return nil
+        }
+        let captured: String? = await withTaskGroup(of: String?.self) { group in
+            group.addTask {
+                try? await Task.sleep(for: timeout)
+                collector.cancel()
+                return nil
+            }
+            group.addTask { await collector.value }
+            let first = (await group.next()).flatMap { $0 }
+            group.cancelAll()
+            return first
+        }
+        guard let captured else {
+            throw NSError(
+                domain: "ChatCommandsTests",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "timed out waiting for a chat subject"]
+            )
+        }
+        return captured
+    }
+
     /// Assert `client` receives NO broadcast (355) within `timeout`.
     private static func expectNoBroadcast(
         _ client: any HotlineClient,
@@ -945,6 +981,67 @@ struct ChatCommandsTests {
             try await alice.sendChat("//emph", in: nil, isAction: false)
             let line = try await bobReceives
             #expect(line.contains("Alice: //emph"))
+        }
+    }
+
+    // MARK: - Public chat topic
+
+    @Test("a configured topic is pushed to a client on login")
+    func topicPushedOnLogin() async throws {
+        let path = NSTemporaryDirectory() + "chatsubject-\(UUID().uuidString).json"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let configuration = ServerConfiguration(
+            port: 0,
+            serverName: "Topic test",
+            chatSubject: "Daily topic",
+            chatSubjectStatePath: path
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let alice = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Alice")
+            let subject = try await Self.awaitSubject(alice)
+            #expect(subject == "Daily topic")
+        }
+    }
+
+    @Test("/topic from a canBroadcast holder sets + broadcasts the public subject")
+    func topicAdminPath() async throws {
+        let path = NSTemporaryDirectory() + "chatsubject-\(UUID().uuidString).json"
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let configuration = ServerConfiguration(
+            port: 0,
+            serverName: "Topic test",
+            chatSubjectStatePath: path,
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin",
+                password: "admin",
+                nickname: "Admin"
+            )
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let admin = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin"
+            )
+            let bob = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Bob")
+            try await Task.sleep(for: .milliseconds(150))
+
+            async let bobSubject = Self.awaitSubject(bob)
+            async let adminConfirm = Self.awaitChat(admin) { $0.contains("Topic set") }
+
+            try await admin.sendChat("/topic Welcome to tastybytes", in: nil, isAction: false)
+
+            #expect(try await bobSubject == "Welcome to tastybytes")
+            #expect(try await adminConfirm.contains("Topic set"))
+        }
+    }
+
+    @Test("/topic from a guest is rejected")
+    func topicGuestRejected() async throws {
+        try await ServerTestHelpers.withRunningServer { _, port in
+            let guest = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Snooper")
+            try await Task.sleep(for: .milliseconds(150))
+            async let errorLine = Self.awaitChat(guest) { $0.contains("Permission denied") }
+            try await guest.sendChat("/topic hijack the room", in: nil, isAction: false)
+            #expect(try await errorLine.contains("/topic requires the canBroadcast privilege"))
         }
     }
 }

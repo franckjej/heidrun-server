@@ -247,6 +247,21 @@ enum PacketEncoder {
         )
     }
 
+    /// Push transID 119 (`NotifyChatSubject`) for the **public/main**
+    /// chat. Same wire shape as `privateChatSubjectPush` but with a zero
+    /// Chat ID (`0x00000000`), which the client maps to the public chat's
+    /// topic. Sent on login (when a topic is set) and on every `/topic`.
+    static func publicChatSubjectPush(
+        subject: String,
+        encoding: String.Encoding
+    ) -> Data {
+        privateChatSubjectPush(
+            chatReference: Data([0, 0, 0, 0]),
+            subject: subject,
+            encoding: encoding
+        )
+    }
+
     /// Push transID 102 (`kInfoNewPost`) for a fresh plain-news post.
     static func plainNewsPostPush(
         line: String,
