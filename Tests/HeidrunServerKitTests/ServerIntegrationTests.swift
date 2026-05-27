@@ -32,7 +32,8 @@ enum ServerTestHelpers {
         port: UInt16,
         nickname: String,
         loginName: String = "",
-        password: String = ""
+        password: String = "",
+        emoji: String? = nil
     ) async throws -> any HotlineClient {
         let settings = ConnectionSettings(
             name: "loopback",
@@ -42,7 +43,8 @@ enum ServerTestHelpers {
             login: loginName
         )
         let client = try await HotlineNetworkClient.connect(settings: settings)
-        try await client.login(name: loginName, password: password, nickname: nickname, icon: 0)
+        try await client.login(
+            name: loginName, password: password, nickname: nickname, icon: 0, emoji: emoji)
         return client
     }
 }
@@ -60,6 +62,37 @@ struct ServerIntegrationTests {
             let users = try await client.fetchUserList()
             #expect(users.count == 1)
             #expect(users.first?.nickname == "Frank")
+        }
+    }
+
+    @Test("emoji set at login appears in another user's user list")
+    func emojiPropagatesToUserList() async throws {
+        try await ServerTestHelpers.withRunningServer { _, port in
+            let alice = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Alice")
+            _ = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Bob", emoji: "🎸")
+            try await Task.sleep(for: .milliseconds(200))
+
+            let users = try await alice.fetchUserList()
+            let bob = try #require(users.first(where: { $0.nickname == "Bob" }))
+            #expect(bob.emoji == "🎸")
+        }
+    }
+
+    @Test("changeNickname updates the stored emoji for peers")
+    func emojiUpdatesViaChangeNickname() async throws {
+        try await ServerTestHelpers.withRunningServer { _, port in
+            let alice = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Alice")
+            let bob = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Bob")
+            try await bob.changeNickname("Bob", icon: 0, emoji: "🌮", persist: false)
+            try await Task.sleep(for: .milliseconds(200))
+
+            let users = try await alice.fetchUserList()
+            let bobUser = try #require(users.first(where: { $0.nickname == "Bob" }))
+            #expect(bobUser.emoji == "🌮")
         }
     }
 
