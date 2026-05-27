@@ -9,13 +9,17 @@ extension ClientSession {
     func handleSetClientUserInfo(header: PacketHeader, fields: [PacketField]) async {
         let newNick = fields.string(.nickname, encoding: stringEncoding) ?? nickname
         let newIcon = fields.uint16(.icon) ?? icon
+        // Empty string clears; absent field leaves the current value.
+        let newEmoji = fields.string(.userEmoji, encoding: .utf8) ?? emoji
         self.nickname = newNick
         self.icon = newIcon
+        self.emoji = newEmoji
         guard socketID != 0,
               let updated = await registry.updateMember(
                   socketID: socketID,
                   nickname: newNick,
-                  icon: newIcon
+                  icon: newIcon,
+                  emoji: newEmoji
               ) else { return }
         await registry.broadcast(
             PacketEncoder.userChangedPush(member: updated, encoding: stringEncoding),

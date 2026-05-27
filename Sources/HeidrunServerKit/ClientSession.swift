@@ -21,6 +21,9 @@ public actor ClientSession {
     var socketID: UInt16 = 0
     var nickname: String = "guest"
     var icon: UInt16 = 0
+    /// **Heidrun extension.** UTF-8 emoji avatar the client declared, or
+    /// `nil`. Always decoded as UTF-8, never `stringEncoding`.
+    var emoji: String?
     /// Account row that authenticated the current session, or `nil`
     /// for guest connections (empty login). Used by privilege checks.
     var authenticatedAccount: Account?
@@ -500,6 +503,7 @@ public actor ClientSession {
     private func handleLogin(header: PacketHeader, fields: [PacketField]) async {
         let nick = fields.string(.nickname, encoding: stringEncoding) ?? "guest"
         let iconValue = fields.uint16(.icon) ?? 0
+        let emojiValue = fields.string(.userEmoji, encoding: .utf8)
         let login = Self.obfuscatedString(.login, from: fields, encoding: stringEncoding) ?? ""
         let password = Self.obfuscatedString(.password, from: fields, encoding: stringEncoding) ?? ""
         self.clientVersion = fields.uint16(.clientVersion)
@@ -530,13 +534,15 @@ public actor ClientSession {
 
         self.nickname = nick
         self.icon = iconValue
+        self.emoji = emojiValue
 
         let initialStatus = authenticatedAccount.initialHotStatus
         let assigned = await registry.register(
             session: self,
             nickname: nick,
             icon: iconValue,
-            status: initialStatus
+            status: initialStatus,
+            emoji: emojiValue
         )
         self.socketID = assigned
         serverLogger.info("user logged in", metadata: [
@@ -563,6 +569,7 @@ public actor ClientSession {
             socketID: assigned,
             nickname: nick,
             icon: iconValue,
+            emoji: emojiValue,
             status: initialStatus
         )
         await registry.broadcast(

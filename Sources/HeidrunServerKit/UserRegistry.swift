@@ -16,6 +16,10 @@ public actor UserRegistry {
         public let socketID: UInt16
         public var nickname: String
         public var icon: UInt16
+        /// **Heidrun extension.** UTF-8 emoji avatar, or `nil` when the
+        /// user relies on the numeric `icon`. Echoed to peers in the
+        /// user-list entry and `userChanged` push.
+        public var emoji: String?
         public var status: UInt16
         /// `true` when the session is hidden from peer user-list
         /// snapshots (via `/invisible`). The session stays connected
@@ -40,12 +44,14 @@ public actor UserRegistry {
         session: ClientSession,
         nickname: String,
         icon: UInt16,
-        status: UInt16 = 0
+        status: UInt16 = 0,
+        emoji: String? = nil
     ) -> UInt16 {
         let assigned = nextSocketID
         nextSocketID &+= 1
         sessions[assigned] = WeakSession(value: session)
-        members[assigned] = Member(socketID: assigned, nickname: nickname, icon: icon, status: status)
+        members[assigned] = Member(
+            socketID: assigned, nickname: nickname, icon: icon, emoji: emoji, status: status)
         return assigned
     }
 
@@ -60,10 +66,13 @@ public actor UserRegistry {
     /// the updated `Member` (or `nil` if the socket isn't registered)
     /// so the caller can fan out a `userChanged` (301) push.
     @discardableResult
-    public func updateMember(socketID: UInt16, nickname: String, icon: UInt16) -> Member? {
+    public func updateMember(
+        socketID: UInt16, nickname: String, icon: UInt16, emoji: String?
+    ) -> Member? {
         guard var existing = members[socketID] else { return nil }
         existing.nickname = nickname
         existing.icon = icon
+        existing.emoji = emoji
         members[socketID] = existing
         return existing
     }

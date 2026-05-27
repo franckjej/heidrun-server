@@ -22,7 +22,7 @@ struct NicknameChangeTests {
                 return nil
             }
 
-            try await bob.changeNickname("Roberta", icon: 4242, persist: false)
+            try await bob.changeNickname("Roberta", icon: 4242, emoji: nil, persist: false)
 
             let observed: User? = await withTaskGroup(of: User?.self) { group in
                 group.addTask {

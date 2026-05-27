@@ -52,7 +52,8 @@ enum PacketEncoder {
                     icon: member.icon,
                     status: UserStatus(rawValue: member.status),
                     privileges: [],
-                    nickname: member.nickname
+                    nickname: member.nickname,
+                    emoji: member.emoji
                 ),
                 encoding: encoding
             )
@@ -79,7 +80,8 @@ enum PacketEncoder {
                 PacketField.uint16(.socket, member.socketID),
                 PacketField.uint16(.icon, member.icon),
                 PacketField.uint16(.status, member.status),
-                PacketField.string(.nickname, member.nickname, encoding: encoding)
+                PacketField.string(.nickname, member.nickname, encoding: encoding),
+                PacketField.string(.userEmoji, member.emoji ?? "", encoding: .utf8)
             ]
         )
     }
