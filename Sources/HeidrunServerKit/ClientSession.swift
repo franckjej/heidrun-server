@@ -495,8 +495,18 @@ public actor ClientSession {
             await handleSetPrivateChatSubject(header: header, fields: fields)
             return true
         case 500:
-            // 185-style ping. Client sends as no-reply; nothing for
-            // the server to do beyond not falling through silently.
+            // 185-style keepalive ping. The client doesn't *wait* for
+            // a reply (it sends with `expectsReply: false`), but the
+            // wire protocol still expects one — every classic Hotline
+            // server emits a class-1, txID=0, no-body reply, and
+            // clients use it to confirm the link is live. Omitting
+            // the reply made our pings look like the link was dead
+            // in client-side packet inspectors and broke server-side
+            // pings on clients that DO use the reply as a watchdog.
+            try? await writer(PacketEncoder.emptyReply(
+                taskNumber: header.taskNumber,
+                transactionID: 0
+            ))
             return true
         default:
             return true
