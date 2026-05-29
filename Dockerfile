@@ -100,11 +100,15 @@ RUN --mount=type=secret,id=gh_token,required=true \
 # ──────────────────────────────────────────────────────────────────────────────
 FROM swift:6.2-jammy-slim AS runtime
 
-# GRDB dlopens libsqlite3 at runtime; the slim image doesn't include it.
-# tzdata lets a `TZ=Area/City` (set via compose) resolve to a real zone
-# so news-post timestamps render in the operator's local time, not UTC.
+# GRDB dlopens libsqlite3 at runtime; the slim image doesn't include
+# it. tzdata lets a `TZ=Area/City` (set via compose) resolve to a real
+# zone so news-post timestamps render in the operator's local time,
+# not UTC. netcat-openbsd provides the `nc` binary the compose
+# `healthcheck` probe uses (`nc -z 127.0.0.1 5500`); slim images
+# don't ship it by default and the probe silently failed forever
+# until we noticed the `unhealthy` status on a deployed container.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends libsqlite3-0 tzdata \
+ && apt-get install -y --no-install-recommends libsqlite3-0 tzdata netcat-openbsd \
  && rm -rf /var/lib/apt/lists/*
 
 # A non-root account owns the state directories. /var/lib/heidrun
