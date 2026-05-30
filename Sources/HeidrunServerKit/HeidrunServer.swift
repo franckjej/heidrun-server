@@ -681,6 +681,13 @@ public actor HeidrunServer {
                 current = end
             }
         case let .upload(path, name, declaredSize, resume):
+            let pathDisplay = (path + [name]).joined(separator: "/")
+            serverLogger.info("upload starting (HTXF)", metadata: [
+                "path": "\(pathDisplay)",
+                "declaredSize": "\(declaredSize)",
+                "resume": "\(resume)",
+                "transferID": "\(transferID)"
+            ])
             // The client sometimes re-handshakes once it knows the
             // final framing size; peek for a second "HTXF" header at
             // the start of the data stream. (Matches the test
@@ -706,11 +713,22 @@ public actor HeidrunServer {
                     payload.append(rest)
                 }
             } catch {
+                serverLogger.warning("upload aborted: HTXF stream read failed", metadata: [
+                    "path": "\(pathDisplay)",
+                    "transferID": "\(transferID)"
+                ])
                 return
             }
-            guard let envelope = try? UploadFraming.decode(payload) else { return }
+            guard let envelope = try? UploadFraming.decode(payload) else {
+                serverLogger.warning("upload aborted: malformed FILP envelope", metadata: [
+                    "path": "\(pathDisplay)",
+                    "transferID": "\(transferID)",
+                    "bytes": "\(payload.count)"
+                ])
+                return
+            }
             let storedName = envelope.fileName.isEmpty ? name : envelope.fileName
-            _ = await files.putFile(
+            let wrote = await files.putFile(
                 at: path,
                 name: storedName,
                 data: envelope.data,
@@ -718,6 +736,24 @@ public actor HeidrunServer {
                 creator: envelope.creator,
                 resume: resume
             )
+            if wrote {
+                serverLogger.info("upload complete", metadata: [
+                    "path": "\(pathDisplay)",
+                    "bytes": "\(envelope.data.count)",
+                    "transferID": "\(transferID)"
+                ])
+            } else {
+                // Race window: the file appeared between the control
+                // channel's existence check and the HTXF receiver
+                // landing bytes. FileVault.putFile refused to clobber;
+                // we log so the operator notices.
+                serverLogger.warning("upload failed: vault refused write (collision or invalid name)", metadata: [
+                    "path": "\(pathDisplay)",
+                    "bytes": "\(envelope.data.count)",
+                    "transferID": "\(transferID)",
+                    "resume": "\(resume)"
+                ])
+            }
         }
     }
 }

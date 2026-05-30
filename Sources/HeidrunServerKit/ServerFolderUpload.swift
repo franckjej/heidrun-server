@@ -79,7 +79,7 @@ enum ServerFolderUpload {
             let fileParent = rootPath + parsed.components.dropLast()
             let storedName = parsed.components.last ?? envelope.fileName
             guard !storedName.isEmpty else { continue }
-            _ = await files.putFile(
+            let wrote = await files.putFile(
                 at: Array(fileParent),
                 name: storedName,
                 data: envelope.data,
@@ -87,6 +87,23 @@ enum ServerFolderUpload {
                 creator: envelope.creator,
                 resume: false
             )
+            if wrote {
+                serverLogger.info("folder upload: file written", metadata: [
+                    "path": "\((fileParent + [storedName]).joined(separator: "/"))",
+                    "bytes": "\(envelope.data.count)"
+                ])
+            } else {
+                // Per-file collision: the target already exists inside
+                // the folder being uploaded. We can't issue a control-
+                // channel error here (we're mid-HTXF), but we log so
+                // the operator can see the gap, and keep draining the
+                // remaining items rather than dropping the whole
+                // bundle.
+                serverLogger.warning("folder upload: file skipped (collision or write error)", metadata: [
+                    "path": "\((fileParent + [storedName]).joined(separator: "/"))",
+                    "bytes": "\(envelope.data.count)"
+                ])
+            }
         }
     }
 

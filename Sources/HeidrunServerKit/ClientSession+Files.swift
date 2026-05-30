@@ -134,7 +134,12 @@ extension ClientSession {
 
     /// Handle `uploadFolder` (213): register a pending
     /// `.folderUpload`, reply with the transferID so the client can
-    /// open its HTXF connection and start streaming items.
+    /// open its HTXF connection and start streaming items. Per-item
+    /// existence checks happen in `ServerFolderUpload.drain` — at the
+    /// top level we allow the folder name itself to merge with an
+    /// existing directory (the FileVault `createFolder` call is a
+    /// no-op if the directory exists), but individual files inside
+    /// will not silently overwrite.
     func handleUploadFolder(header: PacketHeader, fields: [PacketField]) async {
         let path = filePath(from: fields)
         guard let name = fields.string(.fileName, encoding: stringEncoding) else {
@@ -150,6 +155,13 @@ extension ClientSession {
             name: name,
             itemCount: itemCount
         )
+        serverLogger.info("folder upload accepted", metadata: [
+            "nickname": "\(nickname)",
+            "socketID": "\(socketID)",
+            "path": "\(displayPath(path, name: name))",
+            "itemCount": "\(itemCount)",
+            "transferID": "\(transferID)"
+        ])
         try? await writer(PacketEncoder.uploadFileReply(
             taskNumber: header.taskNumber,
             transferID: transferID
@@ -160,6 +172,13 @@ extension ClientSession {
     /// transfer of kind `.upload`, reply with the assigned transferID.
     /// The client then opens an HTXF connection on port + 1 carrying
     /// that ID and the FILP envelope.
+    ///
+    /// Refuses silent overwrites: when a file already exists at
+    /// `(path, name)` and the client did not set the resume parameter,
+    /// the upload is rejected with a human-readable error message
+    /// instead of allocating a transfer slot. The client can re-issue
+    /// with resume=1 (append) or delete the existing file first via
+    /// TX 204.
     func handleUploadFile(header: PacketHeader, fields: [PacketField]) async {
         let path = filePath(from: fields)
         guard let name = fields.string(.fileName, encoding: stringEncoding) else {
@@ -171,12 +190,37 @@ extension ClientSession {
         }
         let declaredSize = fields.uint32(.transferSize) ?? 0
         let resume = (fields.uint16(.parameter) ?? 0) == 1
+
+        if !resume, await files.info(at: path, name: name) != nil {
+            serverLogger.info("upload rejected: target exists", metadata: [
+                "nickname": "\(nickname)",
+                "socketID": "\(socketID)",
+                "path": "\(displayPath(path, name: name))",
+                "declaredSize": "\(declaredSize)"
+            ])
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: 203,
+                message: "file '\(name)' already exists at this location",
+                encoding: stringEncoding
+            ))
+            return
+        }
+
         let transferID = await transfers.registerUpload(
             path: path,
             name: name,
             declaredSize: declaredSize,
             resume: resume
         )
+        serverLogger.info("upload accepted", metadata: [
+            "nickname": "\(nickname)",
+            "socketID": "\(socketID)",
+            "path": "\(displayPath(path, name: name))",
+            "declaredSize": "\(declaredSize)",
+            "resume": "\(resume)",
+            "transferID": "\(transferID)"
+        ])
         try? await writer(PacketEncoder.uploadFileReply(
             taskNumber: header.taskNumber,
             transferID: transferID
