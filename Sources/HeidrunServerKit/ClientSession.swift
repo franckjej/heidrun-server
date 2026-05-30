@@ -253,6 +253,15 @@ public actor ClientSession {
     /// disconnects (gracefully or not).
     public func run<Source: AsyncSequence & Sendable>(_ inbound: Source) async
     where Source.Element == Data {
+        // Every new TCP/TLS connection lands here BEFORE handshake.
+        // Log so the operator can see a connection was at least
+        // accepted — even one that fails the handshake leaves a
+        // trail with its remote address.
+        serverLogger.info("connection accepted", metadata: [
+            "remoteHost": "\(remoteHost ?? "—")",
+            "tls": "\(isTLS)"
+        ])
+
         var stream = ByteStream(source: inbound)
 
         // Handshake. A bad handshake closes the connection without
@@ -262,6 +271,15 @@ public actor ClientSession {
             let ack = try Handshake.parse(magic)
             try await writer(ack)
         } catch {
+            // `notice` level so handshake misses (wrong magic, wrong
+            // protocol on this port, premature close) surface in the
+            // default log filter — they're the most likely "client
+            // couldn't even start" failure.
+            serverLogger.notice("handshake failed", metadata: [
+                "remoteHost": "\(remoteHost ?? "—")",
+                "tls": "\(isTLS)",
+                "error": "\(error)"
+            ])
             await closer()
             return
         }
@@ -272,6 +290,14 @@ public actor ClientSession {
             do {
                 let headerBytes = try await stream.receiveExactly(PacketHeader.byteCount)
                 guard let header = PacketHeader(decoding: headerBytes) else {
+                    // Malformed header (e.g. truncated, garbage at
+                    // mid-stream after a partial frame). Notice
+                    // level — operator wants to see this.
+                    serverLogger.notice("malformed packet header — closing connection", metadata: [
+                        "remoteHost": "\(remoteHost ?? "—")",
+                        "socketID": "\(socketID)",
+                        "nickname": "\(nickname)"
+                    ])
                     await closer()
                     break
                 }
@@ -285,6 +311,17 @@ public actor ClientSession {
                 let keepGoing = await dispatch(header: header, fields: fields)
                 if !keepGoing { break }
             } catch {
+                // Typical: client closed the socket (no more bytes).
+                // Stays at `debug` so a clean disconnect doesn't
+                // spam the default log; the matching "user
+                // disconnected" notice below is the operator-facing
+                // line for sessions that completed login.
+                serverLogger.debug("frame loop ended", metadata: [
+                    "remoteHost": "\(remoteHost ?? "—")",
+                    "socketID": "\(socketID)",
+                    "nickname": "\(nickname)",
+                    "error": "\(error)"
+                ])
                 break
             }
         }
@@ -359,6 +396,12 @@ public actor ClientSession {
         // threaded UI. Clients honouring the version never send these.
         if configuration.newsMode == .flat,
            Self.threadedNewsTransactions.contains(header.transactionID) {
+            serverLogger.notice("rejected threaded-news txn (flat mode)", metadata: [
+                "transID": "\(header.transactionID)",
+                "socketID": "\(socketID)",
+                "nickname": "\(nickname)",
+                "remoteHost": "\(remoteHost ?? "—")"
+            ])
             try? await writer(PacketEncoder.errorReply(
                 taskNumber: header.taskNumber,
                 transactionID: header.transactionID
@@ -509,6 +552,20 @@ public actor ClientSession {
             ))
             return true
         default:
+            // Unknown transaction — the most common explanation when
+            // a user reports "I connected but couldn't fully login":
+            // their client is sending a TX we don't handle, so they
+            // sit waiting for a reply that never comes. Surface at
+            // `notice` so the operator sees it without needing
+            // debug-level logging on.
+            serverLogger.notice("unknown transactionID — no reply sent", metadata: [
+                "transID": "\(header.transactionID)",
+                "taskNumber": "\(header.taskNumber)",
+                "socketID": isPreLogin ? "—" : "\(socketID)",
+                "nickname": isPreLogin ? "—" : "\(nickname)",
+                "remoteHost": "\(remoteHost ?? "—")",
+                "fieldCount": "\(fields.count)"
+            ])
             return true
         }
     }
@@ -528,6 +585,17 @@ public actor ClientSession {
         if !login.isEmpty {
             let verified = try? await accounts.verifyCredentials(login: login, password: password)
             guard let account = verified else {
+                // Failed auth used to be a silent error reply — when
+                // a user said "I couldn't login" the operator had
+                // nothing to grep. Notice level so it surfaces
+                // without needing debug logging on.
+                serverLogger.notice("login refused (bad credentials)", metadata: [
+                    "login": "\(login)",
+                    "nickname": "\(nick)",
+                    "remoteHost": "\(remoteHost ?? "—")",
+                    "tls": "\(isTLS)",
+                    "clientVersion": "\(clientVersion.map(String.init) ?? "—")"
+                ])
                 try? await writer(PacketEncoder.errorReply(
                     taskNumber: header.taskNumber,
                     transactionID: 107
