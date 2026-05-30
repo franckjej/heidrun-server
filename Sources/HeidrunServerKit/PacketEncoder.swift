@@ -317,15 +317,26 @@ enum PacketEncoder {
     /// surface a meaningful line. Encoding picks the connection's
     /// active wire encoding so message text round-trips like every
     /// other server-emitted string.
+    /// Build an error reply (errorID=1) for a failed transaction.
+    ///
+    /// `kind` attaches a Heidrun-extension `.errorKind` (0xE001) field
+    /// so newer clients can switch on the failure mode programmatically
+    /// (e.g. surface a "Replace / Resume / Cancel" alert specifically
+    /// for `.fileAlreadyExists`). Older clients ignore the unknown
+    /// field and fall back on the `.errorMessage` text.
     static func errorReply(
         taskNumber: UInt32,
         transactionID: UInt16,
         message: String? = nil,
+        kind: HotlineErrorKind? = nil,
         encoding: String.Encoding = .macOSRoman
     ) -> Data {
         var fields: [PacketField] = []
         if let message {
             fields.append(.string(.errorMessage, message, encoding: encoding))
+        }
+        if let kind {
+            fields.append(.uint16(.errorKind, kind.rawValue))
         }
         return PacketCodec.encode(
             classID: 1,

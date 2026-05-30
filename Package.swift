@@ -9,7 +9,10 @@ let package = Package(
         .executable(name: "HeidrunServer", targets: ["HeidrunServer"])
     ],
     dependencies: [
-        .package(url: "https://github.com/franckjej/heidrun-protocol.git", from: "1.0.0-rc7"),
+        // Pinned with `exact:` — SemVer pre-release tags compare
+        // lexically, so `from: "1.0.0-rc13"` would silently resolve back
+        // to rc9 (`'1' < '9'`). Bump this in lock-step with the protocol.
+        .package(url: "https://github.com/franckjej/heidrun-protocol.git", exact: "1.0.0-rc13"),
         .package(url: "https://github.com/apple/swift-nio.git", from: "2.65.0"),
         .package(url: "https://github.com/apple/swift-nio-ssl.git", from: "2.27.0"),
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.0.0"),

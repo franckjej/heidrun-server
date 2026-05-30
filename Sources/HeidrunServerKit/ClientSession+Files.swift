@@ -202,6 +202,7 @@ extension ClientSession {
                 taskNumber: header.taskNumber,
                 transactionID: 203,
                 message: "file '\(name)' already exists at this location",
+                kind: .fileAlreadyExists,
                 encoding: stringEncoding
             ))
             return

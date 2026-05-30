@@ -113,7 +113,7 @@ struct FileWriteTests {
         }
     }
 
-    @Test("uploading over an existing file without resume is rejected with a typed server error and the original file is untouched")
+    @Test("uploading over an existing file without resume throws the typed HotlineError.fileAlreadyExists and leaves the original file untouched")
     func uploadRejectsOverwrite() async throws {
         try await withSeededFilesServer { _, port, rootURL in
             let original = Data("ORIGINAL CONTENT — must survive".utf8)
@@ -123,14 +123,23 @@ struct FileWriteTests {
             let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
             let replacement = Data("REPLACEMENT — should never land".utf8)
 
-            await #expect(throws: HotlineError.self) {
+            var caught: HotlineError?
+            do {
                 _ = try await client.startUpload(
                     at: RemotePath(components: []),
                     name: "notes.txt",
                     size: UInt32(replacement.count),
                     resume: false
                 )
+                Issue.record("expected startUpload to throw")
+            } catch let error as HotlineError {
+                caught = error
             }
+            guard case let .fileAlreadyExists(message) = caught else {
+                Issue.record("expected .fileAlreadyExists, got \(String(describing: caught))")
+                return
+            }
+            #expect(message?.contains("notes.txt") == true)
 
             // File on disk is unchanged.
             let onDisk = try Data(contentsOf: existing)
