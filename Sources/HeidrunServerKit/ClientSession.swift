@@ -270,11 +270,25 @@ public actor ClientSession {
             let magic = try await stream.receiveExactly(12)
             let ack = try Handshake.parse(magic)
             try await writer(ack)
+        } catch ByteStreamError.endOfStream {
+            // Clean TCP close with no bytes received — the canonical
+            // signature of a healthcheck probe (`nc -z host port`)
+            // or any other "is the port alive" sweep. Log at `debug`
+            // so operators don't get a NOTICE every 30s from their
+            // own healthcheck. Anything that actually sent bytes
+            // and *then* parsed wrong falls into the next catch
+            // arm below.
+            serverLogger.debug("handshake skipped — peer closed before sending bytes", metadata: [
+                "remoteHost": "\(remoteHost ?? "—")",
+                "tls": "\(isTLS)"
+            ])
+            await closer()
+            return
         } catch {
             // `notice` level so handshake misses (wrong magic, wrong
-            // protocol on this port, premature close) surface in the
-            // default log filter — they're the most likely "client
-            // couldn't even start" failure.
+            // protocol on this port, truncated handshake AFTER some
+            // bytes) surface in the default log filter — they're
+            // the most likely "client couldn't even start" failure.
             serverLogger.notice("handshake failed", metadata: [
                 "remoteHost": "\(remoteHost ?? "—")",
                 "tls": "\(isTLS)",
