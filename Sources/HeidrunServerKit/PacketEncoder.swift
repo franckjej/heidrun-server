@@ -398,7 +398,7 @@ enum PacketEncoder {
         let entries = posts.enumerated().map { offset, post in
             NewsThreadListEntry(
                 threadID: UInt16(offset + 1),
-                parentID: 0,
+                parentID: post.parentID,
                 postedAt: now,
                 title: post.title,
                 author: post.author,

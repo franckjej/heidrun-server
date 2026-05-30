@@ -29,9 +29,17 @@ public struct NewsPost: Sendable, Hashable {
     public var author: String
     public var body: String
 
-    public init(title: String, author: String, body: String) {
+    /// Threaded-news parent. `0` = top-level post (root of a chain);
+    /// any non-zero value points to the parent post's 1-based index
+    /// within the same category, mirroring the `threadID` we hand
+    /// out in `PacketEncoder.newsCategoryReply`. Clients use this
+    /// to draw the tree depth.
+    public var parentID: UInt16
+
+    public init(title: String, author: String, body: String, parentID: UInt16 = 0) {
         self.title = title
         self.author = author
         self.body = body
+        self.parentID = parentID
     }
 }

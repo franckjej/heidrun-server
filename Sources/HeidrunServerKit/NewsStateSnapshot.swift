@@ -52,15 +52,22 @@ struct NewsStateSnapshot: Codable, Sendable {
         var title: String
         var author: String
         var body: String
+        /// Optional on the wire so existing v1 snapshots (written
+        /// before `parentID` existed on `NewsPost`) keep decoding —
+        /// missing key → nil → top-level (0). No schemaVersion bump
+        /// needed for an additive optional field; synthesised
+        /// Codable handles `Optional` via `decodeIfPresent`.
+        var parentID: UInt16?
 
         init(from post: NewsPost) {
             self.title = post.title
             self.author = post.author
             self.body = post.body
+            self.parentID = post.parentID
         }
 
         var newsPost: NewsPost {
-            NewsPost(title: title, author: author, body: body)
+            NewsPost(title: title, author: author, body: body, parentID: parentID ?? 0)
         }
     }
 

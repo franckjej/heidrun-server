@@ -66,9 +66,16 @@ extension ClientSession {
     /// fetchNewsThreads — so this handler is reply-only.
     func handlePostNewsThread(header: PacketHeader, fields: [PacketField]) async {
         let path = newsPath(from: fields)
+        // Per the Hotline 1.5 spec field 326 (newsArticleID) carries
+        // the PARENT article's ID on a postNewsThread (410). `0`
+        // means "this is a top-level post". Previously dropped on
+        // the floor — the server then hard-coded parentID: 0 on the
+        // 371 reply too, so every reply rendered flat in clients
+        // even when the user used a Reply UI.
+        let parentID = fields.uint16(.newsArticleID) ?? 0
         let title = fields.string(.newsTitle, encoding: stringEncoding) ?? "(untitled)"
         let body = fields.string(.newsData, encoding: stringEncoding) ?? ""
-        let post = NewsPost(title: title, author: nickname, body: body)
+        let post = NewsPost(title: title, author: nickname, body: body, parentID: parentID)
         let ok = await news.appendPost(at: path, post: post)
         if ok {
             try? await writer(PacketEncoder.emptyReply(

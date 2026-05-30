@@ -80,4 +80,30 @@ struct ThreadedNewsTests {
             #expect(titles.contains("Fresh post"))
         }
     }
+
+    @Test("postNewsThread with a non-zero parentThreadID round-trips on TX 371")
+    func replyParentRoundTrip() async throws {
+        try await ServerTestHelpers.withRunningServer(configuration: Self.configuration) { _, port in
+            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Alice")
+            let path = RemotePath(components: ["General", "Announcements"])
+
+            // The seed lays down two top-level posts ("Welcome" /
+            // "Rules") at indices 1 and 2. Reply to index 1.
+            try await client.postNewsThread(
+                at: path,
+                parentThreadID: 1,
+                title: "Re: Welcome",
+                type: "text/plain",
+                body: "Thanks for the welcome!"
+            )
+
+            let threads = try await client.fetchNewsThreads(at: path)
+            let reply = threads.first { $0.elements.first?.title == "Re: Welcome" }
+            #expect(reply != nil)
+            // The actual regression check: the server used to
+            // hard-code parentID: 0 on every 371 row, so all replies
+            // rendered flat. Now the parent round-trips.
+            #expect(reply?.parentID == 1)
+        }
+    }
 }
