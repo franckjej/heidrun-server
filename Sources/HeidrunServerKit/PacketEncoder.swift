@@ -310,13 +310,29 @@ enum PacketEncoder {
         )
     }
 
-    static func errorReply(taskNumber: UInt32, transactionID: UInt16) -> Data {
-        PacketCodec.encode(
+    /// Reply with `errorID = 1` and an optional human-readable
+    /// `.errorMessage` (102) field. Without a message clients see
+    /// just "server error 1" which doesn't tell the user what went
+    /// wrong; with one (e.g. "file not found"), the CLI / GUI can
+    /// surface a meaningful line. Encoding picks the connection's
+    /// active wire encoding so message text round-trips like every
+    /// other server-emitted string.
+    static func errorReply(
+        taskNumber: UInt32,
+        transactionID: UInt16,
+        message: String? = nil,
+        encoding: String.Encoding = .macOSRoman
+    ) -> Data {
+        var fields: [PacketField] = []
+        if let message {
+            fields.append(.string(.errorMessage, message, encoding: encoding))
+        }
+        return PacketCodec.encode(
             classID: 1,
             transactionID: transactionID,
             taskNumber: taskNumber,
             errorID: 1,
-            fields: []
+            fields: fields
         )
     }
 

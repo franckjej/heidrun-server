@@ -36,14 +36,18 @@ extension ClientSession {
         guard let name = fields.string(.fileName, encoding: stringEncoding) else {
             try? await writer(PacketEncoder.errorReply(
                 taskNumber: header.taskNumber,
-                transactionID: 202
+                transactionID: 202,
+                message: "missing fileName field",
+                encoding: stringEncoding
             ))
             return
         }
         guard let bytes = await files.bytes(at: path, name: name) else {
             try? await writer(PacketEncoder.errorReply(
                 taskNumber: header.taskNumber,
-                transactionID: 202
+                transactionID: 202,
+                message: "file not found: \(displayPath(path, name: name))",
+                encoding: stringEncoding
             ))
             return
         }
@@ -68,14 +72,18 @@ extension ClientSession {
         guard let name = fields.string(.fileName, encoding: stringEncoding) else {
             try? await writer(PacketEncoder.errorReply(
                 taskNumber: header.taskNumber,
-                transactionID: 206
+                transactionID: 206,
+                message: "missing fileName field",
+                encoding: stringEncoding
             ))
             return
         }
         guard let info = await files.info(at: path, name: name) else {
             try? await writer(PacketEncoder.errorReply(
                 taskNumber: header.taskNumber,
-                transactionID: 206
+                transactionID: 206,
+                message: "file not found: \(displayPath(path, name: name))",
+                encoding: stringEncoding
             ))
             return
         }
@@ -323,6 +331,15 @@ extension ClientSession {
             return []
         }
         return path.components
+    }
+
+    /// Format a path + file name for human-readable error messages
+    /// ("Software/Mac/foo.txt" rather than `["Software","Mac"]`,
+    /// "foo.txt"). Used in `errorReply` `message:` fields so the
+    /// client can surface a useful line instead of bare "error 1".
+    fileprivate func displayPath(_ path: [String], name: String) -> String {
+        let joined = path.joined(separator: "/")
+        return joined.isEmpty ? name : "\(joined)/\(name)"
     }
 
     /// Decode the `.filePath` (202) field into `[String]`. Defaults to
