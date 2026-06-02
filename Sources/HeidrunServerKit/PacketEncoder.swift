@@ -6,23 +6,30 @@ import HeidrunCore
 enum PacketEncoder {
     /// Server's reply to a login (transID 107). Carries the advertised
     /// protocol version, the assigned socket ID, and the server's
-    /// display name.
+    /// display name. When `echoResourceForkSupport == true` the
+    /// Heidrun-extension `0xE002` capability flag is included so the
+    /// client knows single-file downloads will ship the FILP envelope.
     static func loginReply(
         taskNumber: UInt32,
         advertisedVersion: UInt16,
         socketID: UInt16,
         serverName: String,
+        echoResourceForkSupport: Bool = false,
         encoding: String.Encoding
     ) -> Data {
-        PacketCodec.encode(
+        var fields: [PacketField] = [
+            PacketField.uint16(.clientVersion, advertisedVersion),
+            PacketField.uint16(.socket, socketID),
+            PacketField.string(.serverName, serverName, encoding: encoding)
+        ]
+        if echoResourceForkSupport {
+            fields.append(PacketField.uint8(.resourceForkSupport, 1))
+        }
+        return PacketCodec.encode(
             classID: 1,
             transactionID: 107,
             taskNumber: taskNumber,
-            fields: [
-                PacketField.uint16(.clientVersion, advertisedVersion),
-                PacketField.uint16(.socket, socketID),
-                PacketField.string(.serverName, serverName, encoding: encoding)
-            ]
+            fields: fields
         )
     }
 

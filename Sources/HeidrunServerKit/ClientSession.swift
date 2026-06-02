@@ -35,6 +35,11 @@ public actor ClientSession {
     /// Client-version (Hotline `versNum`) sent in the 107 login. `nil`
     /// before login.
     var clientVersion: UInt16?
+    /// `true` when the client advertised the Heidrun
+    /// `resourceForkSupport` extension on TX 107. Drives whether
+    /// single-file downloads ship the FILP envelope on the side
+    /// channel (carrying the resource fork) or raw data-fork bytes.
+    var supportsResourceForks: Bool = false
     /// Wall-clock timestamp of the successful login. `nil` while still
     /// in handshake / pre-auth.
     var loginAt: Date?
@@ -591,6 +596,7 @@ public actor ClientSession {
         let login = Self.obfuscatedString(.login, from: fields, encoding: stringEncoding) ?? ""
         let password = Self.obfuscatedString(.password, from: fields, encoding: stringEncoding) ?? ""
         self.clientVersion = fields.uint16(.clientVersion)
+        self.supportsResourceForks = fields.uint8(.resourceForkSupport) == 1
         self.loginAt = Date()
 
         // Authenticate when a login was supplied. Empty login = guest.
@@ -656,6 +662,7 @@ public actor ClientSession {
             advertisedVersion: configuration.effectiveAdvertisedVersion,
             socketID: assigned,
             serverName: configuration.serverName,
+            echoResourceForkSupport: self.supportsResourceForks,
             encoding: stringEncoding
         )
         try? await writer(reply)

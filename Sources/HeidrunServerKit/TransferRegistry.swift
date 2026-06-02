@@ -12,6 +12,13 @@ import Foundation
 public actor TransferRegistry {
     public enum Pending: Sendable {
         case download(bytes: Data, offset: UInt32)
+        /// Pre-assembled FILP/INFO/DATA/MACR envelope for a single-file
+        /// download against a session that negotiated
+        /// `resourceForkSupport` (Heidrun extension 0xE002). Built once
+        /// at TX 202 handler time and streamed unchanged on the side
+        /// channel — the HTXF handler doesn't need to know about
+        /// framing, it just writes the bytes.
+        case framedDownload(envelope: Data)
         case upload(path: [String], name: String, declaredSize: UInt32, resume: Bool)
         /// Server-driven folder download — the enumerated items live
         /// in-memory the same way single-file downloads do (read once
@@ -38,6 +45,17 @@ public actor TransferRegistry {
         nextID &+= 1
         if nextID == 0 { nextID = 1 }                    // skip 0; treat as "no transfer"
         pending[assigned] = .download(bytes: bytes, offset: offset)
+        return assigned
+    }
+
+    /// Register a framed single-file download. `envelope` is the
+    /// complete FILP/INFO/DATA/MACR byte stream built at the control-
+    /// channel handler — the HTXF handler writes it through unchanged.
+    public func registerFramedDownload(envelope: Data) -> UInt32 {
+        let assigned = nextID
+        nextID &+= 1
+        if nextID == 0 { nextID = 1 }
+        pending[assigned] = .framedDownload(envelope: envelope)
         return assigned
     }
 

@@ -680,6 +680,21 @@ public actor HeidrunServer {
                 try? await outChannel.writeAndFlush(buffer).get()
                 current = end
             }
+        case let .framedDownload(envelope):
+            // Negotiated single-file download — the FILP envelope was
+            // pre-assembled at the control-channel handler; stream it
+            // through to the client in the same 16 KiB cadence as raw
+            // downloads so a slow link sees usable progress.
+            let outChannel = channelBox.value
+            let chunkSize = 16 * 1024
+            var current = envelope.startIndex
+            while current < envelope.endIndex {
+                let end = envelope.index(current, offsetBy: chunkSize, limitedBy: envelope.endIndex) ?? envelope.endIndex
+                var buffer = outChannel.allocator.buffer(capacity: chunkSize)
+                buffer.writeBytes(envelope[current..<end])
+                try? await outChannel.writeAndFlush(buffer).get()
+                current = end
+            }
         case let .upload(path, name, declaredSize, resume):
             let pathDisplay = (path + [name]).joined(separator: "/")
             serverLogger.info("upload starting (HTXF)", metadata: [
@@ -732,6 +747,7 @@ public actor HeidrunServer {
                 at: path,
                 name: storedName,
                 data: envelope.data,
+                resourceFork: envelope.resourceFork,
                 type: envelope.type,
                 creator: envelope.creator,
                 resume: resume

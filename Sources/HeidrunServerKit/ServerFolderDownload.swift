@@ -71,7 +71,8 @@ enum ServerFolderDownload {
             let nameBytes = fileName.data(using: encoding, allowLossyConversion: true) ?? Data()
             let total = UploadFraming.totalSize(
                 nameLength: nameBytes.count,
-                dataLength: UInt32(item.data.count)
+                dataLength: UInt32(item.data.count),
+                resourceLength: UInt32(item.resourceFork.count)
             )
             var sizePrefix = Data()
             sizePrefix.appendBigEndian(total)
@@ -82,6 +83,7 @@ enum ServerFolderDownload {
                 creationDate: item.created,
                 modificationDate: item.modified,
                 data: item.data,
+                resourceFork: item.resourceFork,
                 encoding: encoding
             )
             do {

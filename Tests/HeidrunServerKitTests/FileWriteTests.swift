@@ -187,4 +187,38 @@ struct FileWriteTests {
             #expect(received == payload)
         }
     }
+
+    @Test("sendUpload with a resource fork writes ._<name>.rsrc next to the data fork")
+    func uploadFileWithResourceFork() async throws {
+        try await withSeededFilesServer { _, port, rootURL in
+            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
+            let dataFork = Data("data fork bytes".utf8)
+            let resourceFork = Data((0..<96).map { UInt8(($0 ^ 0xC3) & 0xFF) })
+
+            let handle = try await client.startUpload(
+                at: RemotePath(components: []),
+                name: "icon.icns",
+                size: UInt32(dataFork.count),
+                resume: false
+            )
+            try await client.sendUpload(
+                dataFork,
+                for: handle,
+                fileName: "icon.icns",
+                type: .file,
+                creator: .unknown,
+                creationDate: Date(),
+                modificationDate: Date(),
+                resourceFork: resourceFork,
+                progress: nil
+            )
+
+            try await Task.sleep(for: .milliseconds(200))
+
+            let dataURL = rootURL.appendingPathComponent("icon.icns")
+            let sidecarURL = rootURL.appendingPathComponent("._icon.icns.rsrc")
+            #expect((try? Data(contentsOf: dataURL)) == dataFork)
+            #expect((try? Data(contentsOf: sidecarURL)) == resourceFork)
+        }
+    }
 }

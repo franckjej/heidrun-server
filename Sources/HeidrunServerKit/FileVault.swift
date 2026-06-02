@@ -48,11 +48,13 @@ public actor FileVault {
 
     /// One node yielded by `enumerate(at:name:)`. Directories carry an
     /// empty `data`; files carry the data-fork bytes ready to frame
-    /// into the folder-download stream.
+    /// into the folder-download stream, plus the resource fork (read
+    /// from the `._<name>.rsrc` sidecar, empty when no sidecar exists).
     public struct FolderItem: Sendable, Hashable {
         public var relativePath: [String]
         public var isDirectory: Bool
         public var data: Data
+        public var resourceFork: Data
         public var type: HeidrunCore.FourCharCode
         public var creator: HeidrunCore.FourCharCode
         public var created: Date
@@ -62,6 +64,7 @@ public actor FileVault {
             relativePath: [String],
             isDirectory: Bool,
             data: Data = Data(),
+            resourceFork: Data = Data(),
             type: HeidrunCore.FourCharCode = .file,
             creator: HeidrunCore.FourCharCode = .unknown,
             created: Date = .distantPast,
@@ -70,6 +73,7 @@ public actor FileVault {
             self.relativePath = relativePath
             self.isDirectory = isDirectory
             self.data = data
+            self.resourceFork = resourceFork
             self.type = type
             self.creator = creator
             self.created = created
@@ -152,6 +156,17 @@ public actor FileVault {
         return try? Data(contentsOf: fileURL)
     }
 
+    /// Read the resource-fork bytes stored alongside the data fork in
+    /// the `._<name>.rsrc` sidecar. Returns an empty `Data` when there
+    /// is no sidecar (the common case — most files are data-fork only).
+    public func resourceFork(at path: [String], name: String) -> Data {
+        guard Self.isSafeComponent(name) else { return Data() }
+        guard let parent = resolved(path: path) else { return Data() }
+        let fileURL = parent.appendingPathComponent(name, isDirectory: false)
+        let sidecar = Self.sidecarURL(for: fileURL)
+        return (try? Data(contentsOf: sidecar)) ?? Data()
+    }
+
     /// Depth-first walk of the folder at `(path, name)`. Returns a
     /// flat list of every entry inside the folder; directories appear
     /// before their children. The folder itself is *not* part of the
@@ -203,10 +218,13 @@ public actor FileVault {
                 walk(url: child, relative: relPath, into: &collected, fileManager: fileManager)
             } else {
                 let data = (try? Data(contentsOf: child)) ?? Data()
+                let sidecar = sidecarURL(for: child)
+                let resourceFork = (try? Data(contentsOf: sidecar)) ?? Data()
                 collected.append(FolderItem(
                     relativePath: relPath,
                     isDirectory: false,
                     data: data,
+                    resourceFork: resourceFork,
                     type: .file,
                     creator: .unknown,
                     created: created,
@@ -248,6 +266,12 @@ public actor FileVault {
         let wasFolder = isDirectory(url)
         do {
             try fileManager.removeItem(at: url)
+            if !wasFolder {
+                let sidecar = Self.sidecarURL(for: url)
+                if fileManager.fileExists(atPath: sidecar.path) {
+                    try? fileManager.removeItem(at: sidecar)
+                }
+            }
             let key = relativeKey(path: path, name: name)
             if wasFolder {
                 _ = await metadata.removeSubtree(path: key)
@@ -288,6 +312,9 @@ public actor FileVault {
         let wasFolder = isDirectory(source)
         do {
             try fileManager.moveItem(at: source, to: target)
+            if !wasFolder {
+                Self.moveSidecar(from: source, to: target, fileManager: fileManager)
+            }
             let oldKey = relativeKey(path: path, name: oldName)
             let newKey = relativeKey(path: path, name: newName)
             if wasFolder {
@@ -320,6 +347,9 @@ public actor FileVault {
         let wasFolder = isDirectory(source)
         do {
             try fileManager.moveItem(at: source, to: target)
+            if !wasFolder {
+                Self.moveSidecar(from: source, to: target, fileManager: fileManager)
+            }
             let oldKey = relativeKey(path: sourcePath, name: name)
             let newKey = relativeKey(path: destinationPath, name: name)
             if wasFolder {
@@ -376,11 +406,18 @@ public actor FileVault {
     /// back instead of falling through to the `.file/.unknown`
     /// default. Type/creator default to `.file/.unknown` for callers
     /// that don't carry them (resumes mid-stream, legacy tests).
+    ///
+    /// When `resourceFork` is non-empty the bytes are written to a
+    /// `._<name>.rsrc` sidecar next to the data fork; when empty any
+    /// existing sidecar from a prior upload is removed (so overwriting
+    /// a file with a resource fork with one without doesn't leave a
+    /// stale rsrc behind).
     @discardableResult
     public func putFile(
         at path: [String],
         name: String,
         data: Data,
+        resourceFork: Data = Data(),
         type: HeidrunCore.FourCharCode = .file,
         creator: HeidrunCore.FourCharCode = .unknown,
         resume: Bool = false
@@ -403,6 +440,19 @@ public actor FileVault {
                 try data.write(to: url)
             } catch {
                 return false
+            }
+        }
+        // Sidecar: write iff non-empty, otherwise clear any stale one.
+        // Resume appends to the data fork and doesn't carry a fresh
+        // resource fork — leave any existing sidecar alone.
+        if !resume {
+            let sidecar = Self.sidecarURL(for: url)
+            if resourceFork.isEmpty {
+                if fileManager.fileExists(atPath: sidecar.path) {
+                    try? fileManager.removeItem(at: sidecar)
+                }
+            } else {
+                try? resourceFork.write(to: sidecar)
             }
         }
         // Persist type/creator (skipped when both are the defaults — no
@@ -480,6 +530,27 @@ public actor FileVault {
         if component == "." || component == ".." { return false }
         if component.contains("/") || component.contains("\\") { return false }
         return true
+    }
+
+    /// `<parent>/._<name>.rsrc` — the resource-fork sidecar for the
+    /// given data-fork URL. The leading `._` makes the file hidden
+    /// (filtered by `.skipsHiddenFiles` in `list(...)` and `walk(...)`),
+    /// the `.rsrc` suffix makes the role explicit and avoids collision
+    /// with macOS AppleDouble (`._<name>` exactly, no extension).
+    static func sidecarURL(for fileURL: URL) -> URL {
+        let parent = fileURL.deletingLastPathComponent()
+        let name = fileURL.lastPathComponent
+        return parent.appendingPathComponent("._\(name).rsrc", isDirectory: false)
+    }
+
+    /// Move (or remove) the sidecar that belongs to a file being
+    /// renamed/moved. Silent on failure — a missing sidecar is the
+    /// common case (data-fork-only files have none).
+    static func moveSidecar(from source: URL, to target: URL, fileManager: FileManager) {
+        let oldSidecar = sidecarURL(for: source)
+        guard fileManager.fileExists(atPath: oldSidecar.path) else { return }
+        let newSidecar = sidecarURL(for: target)
+        try? fileManager.moveItem(at: oldSidecar, to: newSidecar)
     }
 }
 

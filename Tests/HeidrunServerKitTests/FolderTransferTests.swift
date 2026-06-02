@@ -63,6 +63,73 @@ struct FolderTransferTests {
         }
     }
 
+    @Test("folder download surfaces per-item resource forks from the on-disk sidecars")
+    func downloadResourceForkRoundTrip() async throws {
+        try await withSeededFilesServer { port, rootURL in
+            // Seed: Project/binary.bin (data fork) + ._binary.bin.rsrc (resource fork).
+            let projectURL = rootURL.appendingPathComponent("Project", isDirectory: true)
+            try FileManager.default.createDirectory(at: projectURL, withIntermediateDirectories: true)
+            let dataFork = Data([0x00, 0x01, 0x02, 0x03])
+            let resourceFork = Data((0..<128).map { UInt8(($0 ^ 0x5A) & 0xFF) })
+            try dataFork.write(to: projectURL.appendingPathComponent("binary.bin"))
+            try resourceFork.write(to: projectURL.appendingPathComponent("._binary.bin.rsrc"))
+
+            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
+            let networkClient = try #require(client as? HotlineNetworkClient)
+            let handle = try await networkClient.startFolderDownload(
+                at: RemotePath(components: []),
+                name: "Project"
+            )
+
+            var seen: [String: FolderDownloadItem] = [:]
+            for try await item in networkClient.folderDownloadStream(for: handle) {
+                if !item.isDirectory {
+                    seen[item.relativePath.joined(separator: "/")] = item
+                }
+            }
+
+            let received = try #require(seen["binary.bin"])
+            #expect(received.data == dataFork)
+            #expect(received.resourceFork == resourceFork)
+        }
+    }
+
+    @Test("folder upload writes the per-item resource forks to ._<name>.rsrc sidecars")
+    func uploadResourceForkRoundTrip() async throws {
+        try await withSeededFilesServer { port, rootURL in
+            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
+            let networkClient = try #require(client as? HotlineNetworkClient)
+
+            let dataFork = Data("alpha data".utf8)
+            let resourceFork = Data((0..<64).map { UInt8(($0 * 11) & 0xFF) })
+            let items: [FolderUploadItem] = [
+                FolderUploadItem(
+                    relativePath: ["alpha.bin"],
+                    isDirectory: false,
+                    data: dataFork,
+                    resourceFork: resourceFork
+                )
+            ]
+
+            let handle = try await networkClient.startFolderUpload(
+                at: RemotePath(components: []),
+                name: "Uploaded",
+                size: UInt32(dataFork.count),
+                itemCount: UInt16(items.count),
+                resume: false
+            )
+            try await networkClient.sendFolderUpload(items, for: handle)
+            try await Task.sleep(for: .milliseconds(300))
+
+            let uploadedRoot = rootURL.appendingPathComponent("Uploaded", isDirectory: true)
+            let dataURL = uploadedRoot.appendingPathComponent("alpha.bin")
+            let sidecarURL = uploadedRoot.appendingPathComponent("._alpha.bin.rsrc")
+
+            #expect((try? Data(contentsOf: dataURL)) == dataFork)
+            #expect((try? Data(contentsOf: sidecarURL)) == resourceFork)
+        }
+    }
+
     @Test("upload a folder writes every item into the vault under the new root")
     func uploadRoundTrip() async throws {
         try await withSeededFilesServer { port, rootURL in

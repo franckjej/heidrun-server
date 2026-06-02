@@ -29,8 +29,13 @@ extension ClientSession {
     /// transfer-channel handler matches the ID and streams the bytes.
     ///
     /// `.fileResumeInfo` (203) lets the client resume an aborted
-    /// download — only the data-fork offset is honoured (we don't
-    /// preserve resource forks).
+    /// download — only the data-fork offset is honoured.
+    ///
+    /// When the session negotiated `resourceForkSupport` AND the client
+    /// requested a fresh download (offset == 0), the side channel
+    /// instead ships the FILP/INFO/DATA/MACR envelope so the resource
+    /// fork (read from the `._<name>.rsrc` sidecar) travels with the
+    /// data fork.
     func handleDownloadFile(header: PacketHeader, fields: [PacketField]) async {
         let path = filePath(from: fields)
         guard let name = fields.string(.fileName, encoding: stringEncoding) else {
@@ -57,6 +62,34 @@ extension ClientSession {
             offset = info.dataForkOffset
         }
         let remaining = UInt32(clamping: max(0, bytes.count - Int(offset)))
+
+        // Negotiated single-file framing only kicks in for fresh
+        // downloads — resume + framing isn't a supported combo (the
+        // FILP envelope's INFO/MACR headers wouldn't make sense over a
+        // partial data fork; downloadEnvelope on the client side
+        // requires .framed handles).
+        if self.supportsResourceForks, offset == 0 {
+            let resourceFork = await files.resourceFork(at: path, name: name)
+            let metadata = await files.info(at: path, name: name)
+            let envelope = UploadFraming.encode(
+                fileName: name,
+                type: metadata?.entry.type ?? .file,
+                creator: metadata?.entry.creator ?? .unknown,
+                creationDate: metadata?.created ?? Date(),
+                modificationDate: metadata?.modified ?? Date(),
+                data: bytes,
+                resourceFork: resourceFork,
+                encoding: stringEncoding
+            )
+            let transferID = await transfers.registerFramedDownload(envelope: envelope)
+            try? await writer(PacketEncoder.downloadFileReply(
+                taskNumber: header.taskNumber,
+                transferID: transferID,
+                transferSize: UInt32(clamping: envelope.count)
+            ))
+            return
+        }
+
         let transferID = await transfers.registerDownload(bytes: bytes, offset: offset)
         try? await writer(PacketEncoder.downloadFileReply(
             taskNumber: header.taskNumber,
