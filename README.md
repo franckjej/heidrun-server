@@ -1,6 +1,10 @@
-<p align="center">
-  <img src="banner.png" alt="HeidrunServer" width="100%">
-</p>
+<pre align="center">
+   __         _     __               
+  / /_  ___  (_)___/ /______  ______ 
+ / __ \/ _ \/ / __  / ___/ / / / __ \
+/ / / /  __/ / /_/ / /  / /_/ / / / /
+\/ /_/\___/_/\__,_/_/   \__,_/_/ /_/ 
+</pre>
 
 <p align="center">
   <a href="https://swift.org"><img src="https://img.shields.io/badge/Swift-6.2-orange.svg" alt="Swift 6.2"></a>
