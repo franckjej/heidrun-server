@@ -82,10 +82,8 @@ struct FolderTransferTests {
             )
 
             var seen: [String: FolderDownloadItem] = [:]
-            for try await item in networkClient.folderDownloadStream(for: handle) {
-                if !item.isDirectory {
-                    seen[item.relativePath.joined(separator: "/")] = item
-                }
+            for try await item in networkClient.folderDownloadStream(for: handle) where !item.isDirectory {
+                seen[item.relativePath.joined(separator: "/")] = item
             }
 
             let received = try #require(seen["binary.bin"])

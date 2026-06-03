@@ -7,20 +7,36 @@ excluded:
   - "**/Package.swift"
   - Tests/HeidrunServerKitTests/TestCerts
 
-function_body_length:
-  - 599 # warning
-  - 666 # error
-type_body_length:
-  - 888 # warning
-  - 3333 # error
+# Honest thresholds — permissive but real.
+line_length:
+  warning: 200
+  error: 250
 file_length:
-  - 800 # warning
-  - 999 # error
-#identifier_name:
-#  min_length: 2 # only warning
-#  max_length: # warning and error
-#    warning: 80
-#   error: 100
+  warning: 1100
+  error: 1500
+type_body_length:
+  warning: 900
+  error: 1500
+function_body_length:
+  warning: 250
+  error: 400
+cyclomatic_complexity:
+  warning: 50
+  error: 80
+function_parameter_count:
+  warning: 15
+  error: 25
+nesting:
+  type_level: 2
+
+disabled_rules:
+  - trailing_whitespace
+  - type_name
+  - comment_spacing
+  - non_optional_string_data_conversion
+  - identifier_name  # the project's ≥3-char rule lives in AGENTS.md; default
+                     # identifier_name has too many edge-case false positives
+
 opt_in_rules:
   - closure_end_indentation
   - collection_alignment
@@ -45,13 +61,6 @@ opt_in_rules:
   - literal_expression_end_indentation
   - lower_acl_than_parent
   - modifier_order
-  - multiline_arguments
-  - multiline_arguments_brackets
-  - multiline_function_chains
-  - multiline_literal_brackets
-  - multiline_parameters
-  - multiline_parameters_brackets
-  #- no_extension_access_modifier
   - overridden_super_call
   - pattern_matching_keywords
   - private_subject
@@ -59,9 +68,7 @@ opt_in_rules:
   - redundant_nil_coalescing
   - redundant_type_annotation
   - sorted_first_last
-  - switch_case_on_newline
   - toggle_bool
-  #- trailing_closure
   - unavailable_function
   - unneeded_parentheses_in_closure_argument
   - unowned_variable_capture
@@ -69,21 +76,7 @@ opt_in_rules:
   - vertical_whitespace_closing_braces
   - weak_delegate
   - yoda_condition
+
 analyzer_rules:
   - unused_declaration
   - unused_import
-disabled_rules:
-  - trailing_whitespace
-  - type_name
-  - comment_spacing
-  - non_optional_string_data_conversion
-  - identifier_name
-line_length:
-  warning: 666
-  error: 700
-cyclomatic_complexity:
-  warning: 150
-  error: 225
-function_parameter_count:
-  warning: 10
-  error: 20

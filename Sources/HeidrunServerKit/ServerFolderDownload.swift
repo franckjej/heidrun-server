@@ -32,7 +32,7 @@ enum ServerFolderDownload {
     ) async {
         // 18-byte handshake: consume the trailing `UInt16 3` sentinel
         // that the client appends after the standard 16-byte HTXF.
-        guard let _ = try? await stream.receiveExactly(2) else { return }
+        guard (try? await stream.receiveExactly(2)) != nil else { return }
 
         for item in items {
             let header = encodeItemHeader(
@@ -54,7 +54,7 @@ enum ServerFolderDownload {
                 // before we stream the payload. We ignore the contents
                 // (no partial-state tracking on the server side yet),
                 // so the receive serves only to advance the stream.
-                guard let _ = try? await stream.receiveExactly(74) else { return }
+                guard (try? await stream.receiveExactly(74)) != nil else { return }
             }
 
             if item.isDirectory {

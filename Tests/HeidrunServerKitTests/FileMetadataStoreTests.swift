@@ -218,6 +218,6 @@ struct FileVaultMetadataIntegrationTests {
         // surviving row would surface here on the second info call).
         try Data("hi".utf8).write(to: root.appendingPathComponent("doomed.txt"))
         let info = await vault.info(at: [], name: "doomed.txt")
-        #expect(info?.comment == "")
+        #expect(info?.comment.isEmpty == true)
     }
 }
