@@ -630,10 +630,11 @@ public actor HeidrunServer {
             | UInt32(preamble[base + 5]) << 16
             | UInt32(preamble[base + 6]) << 8
             | UInt32(preamble[base + 7])
-        let preambleSize = UInt32(preamble[base + 8]) << 24
-            | UInt32(preamble[base + 9]) << 16
-            | UInt32(preamble[base + 10]) << 8
-            | UInt32(preamble[base + 11])
+        // Bytes [8..11] are the outer HTXF `transferSize` field. The
+        // upload path used to consult it as a fallback when no inner
+        // re-handshake arrived, but the new envelope-driven reader
+        // sizes each read from the FILP/INFO/DATA/MACR length fields,
+        // so the outer transferSize is now ignored.
         guard let pending = await transfers.claim(transferID: transferID) else { return }
         switch pending {
         case let .banner(bytes):
@@ -705,27 +706,50 @@ public actor HeidrunServer {
             ])
             // The client sometimes re-handshakes once it knows the
             // final framing size; peek for a second "HTXF" header at
-            // the start of the data stream. (Matches the test
-            // server's drainUpload in HeidrunTestServer/Sources/
-            // HeidrunTestServerKit/TransferListener.swift.)
-            let total: UInt32
+            // the start of the data stream and discard it if present.
+            // We don't trust its `transferSize` for read sizing — see
+            // the per-fork reads below.
             var payload = Data()
             do {
                 let firstChunk = try await stream.receiveExactly(16)
-                if firstChunk.prefix(4) == Data([0x48, 0x54, 0x58, 0x46]) {
-                    let chunkBase = firstChunk.startIndex
-                    total = UInt32(firstChunk[chunkBase + 8]) << 24
-                        | UInt32(firstChunk[chunkBase + 9]) << 16
-                        | UInt32(firstChunk[chunkBase + 10]) << 8
-                        | UInt32(firstChunk[chunkBase + 11])
-                } else {
+                if firstChunk.prefix(4) != Data([0x48, 0x54, 0x58, 0x46]) {
                     payload.append(firstChunk)
-                    total = preambleSize == 0 ? declaredSize : preambleSize
                 }
-                let remaining = Int(total) - payload.count
-                if remaining > 0 {
-                    let rest = try await stream.receiveExactly(remaining)
-                    payload.append(rest)
+                // FILP/INFO/DATA/MACR is read incrementally, with each
+                // segment's length pulled from the envelope itself.
+                // The earlier "read `total` bytes in one shot" path
+                // depended on the inner HTXF preamble or TX 203's
+                // `declaredSize` carrying the framed total — fragile
+                // when either is set to the data-fork-only size, in
+                // which case the trailing MACR + resource-fork bytes
+                // got dropped (or, when the inner total overshot, the
+                // read blocked waiting for bytes that never came).
+                if payload.count < 40 {
+                    let head = try await stream.receiveExactly(40 - payload.count)
+                    payload.append(head)
+                }
+                let filpBase = payload.startIndex
+                let infoBlockLength = UInt32(payload[filpBase + 36]) << 24
+                    | UInt32(payload[filpBase + 37]) << 16
+                    | UInt32(payload[filpBase + 38]) << 8
+                    | UInt32(payload[filpBase + 39])
+                let infoBytes = try await stream.receiveExactly(Int(infoBlockLength))
+                payload.append(infoBytes)
+                // Two fork bodies follow (DATA, MACR). Read each fork's
+                // 16-byte header, parse its UInt32 length at bytes
+                // [12..15], then pull exactly that many fork bytes.
+                for _ in 0..<2 {
+                    let forkHeader = try await stream.receiveExactly(16)
+                    payload.append(forkHeader)
+                    let forkBase = forkHeader.startIndex
+                    let forkLength = UInt32(forkHeader[forkBase + 12]) << 24
+                        | UInt32(forkHeader[forkBase + 13]) << 16
+                        | UInt32(forkHeader[forkBase + 14]) << 8
+                        | UInt32(forkHeader[forkBase + 15])
+                    if forkLength > 0 {
+                        let forkBytes = try await stream.receiveExactly(Int(forkLength))
+                        payload.append(forkBytes)
+                    }
                 }
             } catch {
                 serverLogger.warning("upload aborted: HTXF stream read failed", metadata: [

@@ -221,4 +221,40 @@ struct FileWriteTests {
             #expect((try? Data(contentsOf: sidecarURL)) == resourceFork)
         }
     }
+
+    @Test("sendUpload with a multi-chunk data fork AND a resource fork commits both byte-identically")
+    func uploadLargeFileWithResourceFork() async throws {
+        try await withSeededFilesServer { _, port, rootURL in
+            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
+            let dataForkLength = 2 * 1024 * 1024 + 17
+            let dataFork = Data((0..<dataForkLength).map { UInt8(($0 ^ 0xA7) & 0xFF) })
+            let resourceForkLength = 64 * 1024 + 9
+            let resourceFork = Data((0..<resourceForkLength).map { UInt8(($0 ^ 0x5E) & 0xFF) })
+
+            let uploadHandle = try await client.startUpload(
+                at: RemotePath(components: []),
+                name: "DrayTekSyslog.bin",
+                size: UInt32(dataFork.count),
+                resume: false
+            )
+            try await client.sendUpload(
+                dataFork,
+                for: uploadHandle,
+                fileName: "DrayTekSyslog.bin",
+                type: .file,
+                creator: .unknown,
+                creationDate: Date(),
+                modificationDate: Date(),
+                resourceFork: resourceFork,
+                progress: nil
+            )
+
+            try await Task.sleep(for: .milliseconds(500))
+
+            let dataURL = rootURL.appendingPathComponent("DrayTekSyslog.bin")
+            let sidecarURL = rootURL.appendingPathComponent("._DrayTekSyslog.bin.rsrc")
+            #expect((try? Data(contentsOf: dataURL)) == dataFork)
+            #expect((try? Data(contentsOf: sidecarURL)) == resourceFork)
+        }
+    }
 }
