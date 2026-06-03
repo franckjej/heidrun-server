@@ -709,21 +709,37 @@ public actor HeidrunServer {
             // the start of the data stream and discard it if present.
             // We don't trust its `transferSize` for read sizing — see
             // the per-fork reads below.
+            //
+            // Heavy INFO logging is intentional: the upload reader has
+            // been the source of a non-reproducible MACR-loss bug. Each
+            // milestone records `bytesReadSoFar` so a future failure
+            // pinpoints exactly which read short-circuited.
             var payload = Data()
+            var stage = "first-chunk"
+            var innerHandshakeTransferSize: UInt32 = 0
             do {
                 let firstChunk = try await stream.receiveExactly(16)
-                if firstChunk.prefix(4) != Data([0x48, 0x54, 0x58, 0x46]) {
+                let isInnerHandshake = firstChunk.prefix(4) == Data([0x48, 0x54, 0x58, 0x46])
+                if isInnerHandshake {
+                    let chunkBase = firstChunk.startIndex
+                    innerHandshakeTransferSize = UInt32(firstChunk[chunkBase + 8]) << 24
+                        | UInt32(firstChunk[chunkBase + 9]) << 16
+                        | UInt32(firstChunk[chunkBase + 10]) << 8
+                        | UInt32(firstChunk[chunkBase + 11])
+                } else {
                     payload.append(firstChunk)
                 }
+                serverLogger.info("upload reader: first chunk", metadata: [
+                    "path": "\(pathDisplay)",
+                    "transferID": "\(transferID)",
+                    "innerHandshake": "\(isInnerHandshake)",
+                    "innerTransferSize": "\(innerHandshakeTransferSize)",
+                    "bytesReadSoFar": "\(payload.count)"
+                ])
+
                 // FILP/INFO/DATA/MACR is read incrementally, with each
                 // segment's length pulled from the envelope itself.
-                // The earlier "read `total` bytes in one shot" path
-                // depended on the inner HTXF preamble or TX 203's
-                // `declaredSize` carrying the framed total — fragile
-                // when either is set to the data-fork-only size, in
-                // which case the trailing MACR + resource-fork bytes
-                // got dropped (or, when the inner total overshot, the
-                // read blocked waiting for bytes that never came).
+                stage = "FILP-header"
                 if payload.count < 40 {
                     let head = try await stream.receiveExactly(40 - payload.count)
                     payload.append(head)
@@ -733,28 +749,65 @@ public actor HeidrunServer {
                     | UInt32(payload[filpBase + 37]) << 16
                     | UInt32(payload[filpBase + 38]) << 8
                     | UInt32(payload[filpBase + 39])
+                serverLogger.info("upload reader: FILP header complete", metadata: [
+                    "transferID": "\(transferID)",
+                    "infoBlockLength": "\(infoBlockLength)",
+                    "bytesReadSoFar": "\(payload.count)"
+                ])
+
+                stage = "INFO-block"
                 let infoBytes = try await stream.receiveExactly(Int(infoBlockLength))
                 payload.append(infoBytes)
+                serverLogger.info("upload reader: INFO block read", metadata: [
+                    "transferID": "\(transferID)",
+                    "bytesReadSoFar": "\(payload.count)"
+                ])
+
                 // Two fork bodies follow (DATA, MACR). Read each fork's
                 // 16-byte header, parse its UInt32 length at bytes
                 // [12..15], then pull exactly that many fork bytes.
-                for _ in 0..<2 {
+                let forkNames = ["DATA", "MACR"]
+                for forkIndex in 0..<2 {
+                    stage = "\(forkNames[forkIndex])-header"
                     let forkHeader = try await stream.receiveExactly(16)
                     payload.append(forkHeader)
                     let forkBase = forkHeader.startIndex
+                    let forkMagic = String(
+                        data: forkHeader[forkBase..<(forkBase + 4)],
+                        encoding: .ascii
+                    ) ?? "????"
                     let forkLength = UInt32(forkHeader[forkBase + 12]) << 24
                         | UInt32(forkHeader[forkBase + 13]) << 16
                         | UInt32(forkHeader[forkBase + 14]) << 8
                         | UInt32(forkHeader[forkBase + 15])
+                    serverLogger.info("upload reader: fork header read", metadata: [
+                        "transferID": "\(transferID)",
+                        "forkIndex": "\(forkIndex)",
+                        "forkMagic": "\(forkMagic)",
+                        "forkLength": "\(forkLength)",
+                        "bytesReadSoFar": "\(payload.count)"
+                    ])
+
                     if forkLength > 0 {
+                        stage = "\(forkNames[forkIndex])-body"
                         let forkBytes = try await stream.receiveExactly(Int(forkLength))
                         payload.append(forkBytes)
+                        serverLogger.info("upload reader: fork body read", metadata: [
+                            "transferID": "\(transferID)",
+                            "forkIndex": "\(forkIndex)",
+                            "bytesReadSoFar": "\(payload.count)"
+                        ])
                     }
                 }
             } catch {
                 serverLogger.warning("upload aborted: HTXF stream read failed", metadata: [
                     "path": "\(pathDisplay)",
-                    "transferID": "\(transferID)"
+                    "transferID": "\(transferID)",
+                    "stage": "\(stage)",
+                    "bytesReadSoFar": "\(payload.count)",
+                    "innerHandshakeTransferSize": "\(innerHandshakeTransferSize)",
+                    "declaredSize": "\(declaredSize)",
+                    "error": "\(error)"
                 ])
                 return
             }
