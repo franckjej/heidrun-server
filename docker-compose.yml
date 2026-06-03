@@ -193,7 +193,7 @@ services:
 
       # Free-text description shown in tracker listings (falls back to
       # HEIDRUN_SERVER_NAME if unset).
-      # HEIDRUN_TRACKER_DESCRIPTION: "Heidrun on hosting.tastybytes.org"
+      # HEIDRUN_TRACKER_DESCRIPTION: "Heidrun on example.org"
 
       # ---------------------------------------------------------------
       # TLS SIBLING LISTENER

@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-**HeidrunServer** — a Swift 6, pure-SwiftNIO Hotline-protocol server. Pairs with the [Heidrun](https://github.com/franckjej/heidrun-swift) macOS client (or any classic Hotline 1.x client) and runs on macOS and Linux from the same source. Repo: `franckjej/heidrun-server`, work branch `main`.
+**HeidrunServer** — a Swift 6, pure-SwiftNIO Hotline-protocol server. Pairs with the [Heidrun](https://github.com/franckjej/heidrun) macOS client (or any classic Hotline 1.x client) and runs on macOS and Linux from the same source. Repo: `franckjej/heidrun-server`, work branch `main`.
 
-The Hotline wire types and codecs live in the shared SPM package `franckjej/heidrun-protocol` (product `HeidrunCore`), which both the client and this server consume. Edits to the wire format happen there, not here.
+The Hotline wire types and codecs live in the shared SPM package [`franckjej/heidrun-protocol`](https://github.com/franckjej/heidrun-protocol) (product `HeidrunCore`), which both the client and this server consume. Edits to the wire format happen there, not here.
 
 **Do not push to `origin/main` without explicit user confirmation.** Local commits on this branch are typically ahead of the remote until the user pushes themselves.
 
@@ -92,7 +92,7 @@ If `idle_away_threshold` > 0, a supervisor task walks the live `UserRegistry` ev
 
 ## Hotline wire-protocol gotchas
 
-These live in `heidrun-protocol` (`HeidrunCore`), but you'll trip over them on this side too. The original Obj-C reference is `legacy/.../HEClient.m` in the `heidrun-swift` checkout.
+These live in `heidrun-protocol` (`HeidrunCore`), but you'll trip over them on this side too. The original Obj-C reference is in the private `heidrun-swift` archive (now `heidrun_internal/legacy/.../HEClient.m`).
 
 - **All multi-byte ints are big-endian.**
 - **String encoding** defaults to `.macOSRoman`.

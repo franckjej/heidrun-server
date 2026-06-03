@@ -1,680 +1,93 @@
+<p align="center">
+  <img src="banner.png" alt="HeidrunServer" width="100%">
+</p>
+
+<p align="center">
+  <a href="https://swift.org"><img src="https://img.shields.io/badge/Swift-6.2-orange.svg" alt="Swift 6.2"></a>
+  <img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux-blue.svg" alt="macOS | Linux">
+  <a href="https://www.gnu.org/licenses/gpl-2.0.html"><img src="https://img.shields.io/badge/License-GPLv2-blue.svg" alt="License: GPL v2"></a>
+</p>
+
 # HeidrunServer
 
-Swift-on-server Hotline protocol server. Pairs with the Heidrun macOS
-client (or any classic Hotline 1.x client). Runs on macOS and Linux
-from the same source.
+A Swift 6, pure-SwiftNIO Hotline-protocol server. Pairs with the [Heidrun](https://github.com/franckjej/heidrun) macOS client (or any classic Hotline 1.x client). Runs on macOS and Linux from the same source.
 
-## Features (v1)
+## Features
 
-- Hotline protocol: chat, plain + threaded news, private messages, kick
-- Persistent accounts (SQLite via GRDB) with PBKDF2-SHA256 password
-  hashing at rest
-- Admin transactions: createLogin / deleteLogin / openLogin / modifyLogin
-- File system: list, info, download, upload, delete, create folder,
-  rename, move, alias
+- Hotline 1.x protocol: chat, plain + threaded news, private messages + private chats, kick, broadcast
+- Persistent accounts (SQLite via GRDB) with PBKDF2-SHA256 password hashing
+- Admin transactions: `createLogin` / `deleteLogin` / `openLogin` / `modifyLogin`
+- File system: list, info, download, upload, delete, create folder, rename, move, alias
 - HTXF transfer side-channel (port + 1) with data-fork resume
-- Graceful shutdown on SIGINT / SIGTERM
-- Structured logging via swift-log
-- TOML config file or env-var-only configuration
+- Optional TLS sibling listener pair (encrypts control + transfer end-to-end)
+- Tracker UDP registration (Mobius-compatible, 5-min beacon)
+- Server banner (transID 212) — JPEG / GIF / BMP / PICT / URL
+- Per-file metadata (HFS type/creator + comments) persisted alongside accounts
+- Idle-away supervisor — auto-flips the away flag after configurable inactivity
+- Server-side chat commands — `/version`, `/who`, `/topic`, `/broadcast`, `/kick`, `/away`, `/me`, …
+- Structured logging via swift-log, graceful shutdown on SIGINT / SIGTERM
 
 ## Quick start
 
-### macOS (development)
+### Docker
+
+```bash
+docker compose up -d --build
+```
+
+Defaults: control port `5500`, HTXF transfer `5501`, admin `admin` / `CHANGE_ME_BEFORE_FIRST_RUN` (see `docker-compose.yml` to set a real password before the first run).
+
+### Local (development)
 
 ```bash
 swift run HeidrunServer
 ```
 
-The server listens on `127.0.0.1:5500` (control) and `127.0.0.1:5501`
-(HTXF transfer). Default admin credentials are `admin` / `admin` on a
-fresh database — **change them immediately for any real deployment**.
-
-### Docker
-
-```bash
-docker build -t heidrun-server .
-
-docker run -d --name heidrun \
-  -p 5500:5500 -p 5501:5501 \
-  -v heidrun-data:/var/lib/heidrun \
-  -e HEIDRUN_ADMIN_PASSWORD=$(openssl rand -base64 24) \
-  heidrun-server
-```
-
-Or with `docker-compose`:
-
-```bash
-docker compose up -d --build
-```
-
-### Linux (systemd)
-
-See `deploy/systemd/heidrun-server.service`. Install with:
-
-```bash
-install -d /var/lib/heidrun/{files} /etc/heidrun-server
-install -m 0755 ./HeidrunServer /usr/local/bin/heidrun-server
-install -m 0644 heidrun-server.example.toml \
-                /etc/heidrun-server/config.toml
-$EDITOR /etc/heidrun-server/config.toml           # set a real admin password
-install -m 0644 deploy/systemd/heidrun-server.service \
-                /etc/systemd/system/
-useradd --system --home-dir /var/lib/heidrun --shell /usr/sbin/nologin heidrun
-chown -R heidrun:heidrun /var/lib/heidrun
-systemctl daemon-reload
-systemctl enable --now heidrun-server
-```
-
-### macOS (LaunchDaemon)
-
-See `deploy/launchd/org.tastybytes.heidrun-server.plist`. Install with:
-
-```bash
-sudo install -d /usr/local/var/heidrun/files /usr/local/etc/heidrun-server
-sudo install -m 0755 ./HeidrunServer /usr/local/bin/heidrun-server
-sudo install -m 0644 heidrun-server.example.toml \
-                     /usr/local/etc/heidrun-server/config.toml
-sudo $EDITOR /usr/local/etc/heidrun-server/config.toml
-sudo install -m 0644 \
-  deploy/launchd/org.tastybytes.heidrun-server.plist \
-  /Library/LaunchDaemons/
-sudo launchctl bootstrap system /Library/LaunchDaemons/org.tastybytes.heidrun-server.plist
-```
-
-## Building
-
-Requires **Swift 6.2** or newer (Linux deployment) or **Xcode 16.x+**
-(macOS development). Swift's released Linux toolchain is available as
-the official `swift:6.2-jammy` (Ubuntu 22.04) and `swift:6.2-noble`
-(Ubuntu 24.04) Docker images.
-
-```bash
-# macOS / Linux
-swift build --configuration release
-
-# Resulting binary
-ls .build/release/HeidrunServer
-```
-
-### Stamping the build identifier
-
-The running server surfaces a semver + short build identifier via the
-`/version` chat command. The Docker image **auto-stamps**: a tiny
-alpine + git stage in the Dockerfile reads the repo's `.git`,
-computes `git rev-parse --short HEAD` and `date -u +%Y-%m-%d`, and
-writes both into `/usr/local/share/heidrun/{build-id,build-date}`
-inside the image. `HeidrunServerInfo` reads those files at runtime
-via `HEIDRUN_BUILD_INFO_DIR` (pre-set in the Dockerfile). No extra
-env vars to remember:
-
-```bash
-docker compose up -d --build
-```
-
-A new commit invalidates only the small `git-info` stage — the
-multi-minute swift package resolve and the swift build stage stay
-cached.
-
-**Resolution order** at runtime (first non-empty wins):
-
-1. `HEIDRUN_BUILD` / `HEIDRUN_BUILD_DATE` env vars — CI / explicit
-   override (set via the compose `environment:` block, `docker run
-   -e`, or a systemd unit's `Environment=` line).
-2. Files under `HEIDRUN_BUILD_INFO_DIR` (the Dockerfile path).
-3. `"dev"` and an empty date for `swift run` / unstamped releases.
-
-Local `swift run` users see `build: dev` and the parenthetical date
-is omitted. Malformed values are sanitised before they reach the
-wire so an env var carrying a stray newline can't corrupt the multi-
-line `/version` reply.
+Binds `127.0.0.1:5500` + `127.0.0.1:5501`. Default admin is `admin` / `admin` against a fresh database — **change it immediately for any real deployment**.
 
 ## Configuration
 
-Two layered sources: **env vars override the TOML file, which overrides
-built-in defaults.**
+Two layered sources: **env vars > TOML file > built-in defaults.**
 
-### Environment variables
+The annotated source of truth for the config surface is [`heidrun-server.example.toml`](heidrun-server.example.toml). The high-traffic env vars:
 
 | Var | Default | What it does |
 |---|---|---|
 | `HEIDRUN_CONFIG` | _(unset)_ | Path to a TOML config file |
 | `HEIDRUN_PORT` | `5500` | Control port. Transfer port is always `port + 1` |
 | `HEIDRUN_SERVER_NAME` | `Heidrun` | Display name in the user list |
-| `HEIDRUN_CHAT_SUBJECT` | _(empty)_ | Initial public chat topic shown in clients' chat header. Empty = no topic. Operators can change it live with `/topic <text>` (admin) |
-| `HEIDRUN_CHAT_SUBJECT_PATH` | _(derived)_ | JSON file the live topic persists to. Defaults to `<db>.chatsubject.json` next to the SQLite file. A persisted value wins over `HEIDRUN_CHAT_SUBJECT` on restart — delete this file to re-apply the config seed |
 | `HEIDRUN_AGREEMENT` | _(unset)_ | Banner text pushed after login (transID 109) |
-| `HEIDRUN_DB_PATH` | _(in-memory)_ | SQLite file for accounts |
+| `HEIDRUN_CHAT_SUBJECT` | _(empty)_ | Initial public chat topic |
+| `HEIDRUN_DB_PATH` | _(in-memory)_ | SQLite file for accounts + file metadata |
 | `HEIDRUN_FILES_ROOT` | _(tempdir)_ | Directory the file ops operate on |
-| `HEIDRUN_NEWS_PATH` | _(in-memory)_ | JSON snapshot file for news state (plain feed + threaded tree). Unset keeps news in memory — it wipes on restart |
-| `HEIDRUN_NEWS_MODE` | `threaded` | `threaded` serves Hotline 1.5+ categories/articles (legacy clients still see the flat feed); `flat` (alias `plain`) presents as a pre-1.5 board — caps the advertised version below 151 and refuses threaded-news transactions |
-| `HEIDRUN_NEWS_RESET` | _(unset)_ | One-shot startup wipe: `flat`, `threaded`, or `all` (aliases `plain` / `both`). Clears the chosen store and re-persists the empty snapshot before serving. Operator-driven — set, deploy once, then unset so later restarts keep accumulated news |
-| `HEIDRUN_ADMIN_LOGIN` | `admin` | Login for the bootstrap admin (only seeded on a fresh DB) |
-| `HEIDRUN_ADMIN_PASSWORD` | `admin` | Password for the bootstrap admin |
-| `HEIDRUN_ADMIN_NICKNAME` | `Admin` | Nickname for the bootstrap admin |
-| `HEIDRUN_TRACKERS` | _(empty)_ | Comma-separated `host[:port][:password]` list of trackers to register with. Port is the UDP registration port (default **5499**; 5498 is the client list port). Empty disables tracker registration |
-| `HEIDRUN_TRACKER_DESCRIPTION` | _(server name)_ | Free-text description shown in tracker listings |
-| `HEIDRUN_TLS_PORT` | _(unset)_ | Sibling TLS control port. Transfer TLS is `tls_port + 1`. Unset / 0 disables TLS entirely |
-| `HEIDRUN_TLS_CERTIFICATE` | _(unset)_ | Path to PEM-encoded TLS certificate chain |
-| `HEIDRUN_TLS_PRIVATE_KEY` | _(unset)_ | Path to PEM-encoded TLS private key |
-| `HEIDRUN_BANNER_PATH` | _(unset)_ | Image file the server delivers via the 212 `downloadBanner` transaction. Loaded into memory at startup; unset / empty disables the banner |
-| `HEIDRUN_BANNER_KIND` | `jpeg` | Format hint sent in the 212 reply (field 152). One of `jpeg`, `gif`, `bmp`, `pict`, `url` |
-| `HEIDRUN_LOG_LEVEL` | `info` | swift-log level: `trace` / `debug` / `info` / `notice` / `warning` / `error` / `critical` |
-| `TZ` | _(UTC)_ | Standard Unix timezone for the container — controls the timezone stamped onto flat-news post dates (e.g. `Europe/Berlin`). Needs `tzdata` in the image (the Docker image installs it) |
+| `HEIDRUN_NEWS_PATH` | _(in-memory)_ | JSON snapshot file for news state |
+| `HEIDRUN_ADMIN_LOGIN` / `HEIDRUN_ADMIN_PASSWORD` | `admin` / `admin` | Bootstrap admin (only seeded on a fresh DB) |
+| `HEIDRUN_TRACKERS` | _(empty)_ | Comma-separated `host[:port][:password]` list of trackers |
+| `HEIDRUN_TLS_PORT` / `_CERTIFICATE` / `_PRIVATE_KEY` | _(unset)_ | Enables the TLS sibling pair on `tls_port` / `tls_port + 1` |
+| `HEIDRUN_BANNER_PATH` / `HEIDRUN_BANNER_KIND` | _(unset)_ / `jpeg` | Image file delivered via `downloadBanner` (transID 212) |
+| `HEIDRUN_LOG_LEVEL` | `info` | swift-log level: `trace` / `debug` / `info` / … / `critical` |
 
-### TOML config file
+Operator depth (TLS / Let's Encrypt deploy hooks, ufw-docker, bootstrap admin permission upgrade, tracker debugging, full env reference) lives in [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
 
-See `heidrun-server.example.toml`. Every key is optional. Example:
+## Slash commands
 
-```toml
-port = 5500
-server_name = "Heidrun"
-# Public chat topic shown to every connected client. Operators can also
-# change it live with the /topic <text> chat command (admin). Once set
-# live, the persisted value wins on restart — delete the
-# <db>.chatsubject.json file to re-apply this config value.
-chat_subject = "Welcome to tastybytes"
-log_level = "info"
-db_path = "/var/lib/heidrun/heidrun.sqlite"
-files_root = "/var/lib/heidrun/files"
-news_state_path = "/var/lib/heidrun/heidrun.news.json"
-news_mode = "threaded"          # or "flat"
-# news_reset = "all"            # one-shot wipe — set, deploy once, then unset
+Users can issue server commands by typing them into the public chat input. Slash-prefixed lines are intercepted server-side; only the sender sees the response.
 
-[bootstrap_admin]
-login = "admin"
-password = "rotate-me-immediately"
-```
-
-## Operational notes
-
-### Default admin credentials
-
-On the **very first** startup against an empty database, the server
-seeds an account with `HEIDRUN_ADMIN_LOGIN` / `HEIDRUN_ADMIN_PASSWORD`
-(default `admin` / `admin`). After the first startup these env vars are
-**ignored** — the account exists. To change the password later, use
-the `modifyLogin` (transID 353) admin transaction from any logged-in
-client with the `modifyAccounts` privilege.
-
-### Upgrading admin permissions on an older DB
-
-Since May 22 2026 the bootstrap admin is seeded with **every defined
-privilege bit** (`UserPrivileges.all`). Earlier builds only seeded the
-five bits the server enforces directly (`createAccounts`,
-`deleteAccounts`, `readAccounts`, `modifyAccounts`, `disconnectUsers`),
-which is enough to administer accounts but leaves the admin missing
-upload, download, file ops, news, and — most visibly — the
-`disconnectUsers` flag that drives the admin-name-red colour in
-clients. If your deployment predates that change, the bootstrap
-admin row stays untouched on subsequent restarts (the seed only runs
-against an empty accounts table), so an `admin` user logging in shows
-`isAdmin=false status=0x0` in the new login log line.
-
-Three ways to bring the admin row up to date:
-
-1. **From a connected admin client** (preferred). Connect as `admin`,
-   use the Edit Account UI / `modifyLogin` (transID 353) to grant the
-   missing bits. The current admin still holds `modifyAccounts`, so
-   this works without any server-side change. Re-login to see the
-   red name colour pick up.
-2. **Direct SQL** against the SQLite DB (server stopped):
-   ```bash
-   docker compose stop heidrun
-   sqlite3 /var/lib/docker/volumes/heidrun-server_heidrun-data/_data/heidrun.sqlite \
-     "UPDATE accounts SET permissions = 2199022731263 WHERE login = 'admin';"
-   docker compose start heidrun
-   ```
-   `2199022731263` is `0x1FFFFF7FFFF` — `UserPrivileges.all.rawValue`
-   as of this commit (bits 0–18, 20–40; bit 19 is unused in the
-   classic Hotline protocol). If new bits get added upstream the
-   value changes; spin up a fresh DB once and read the exact hex
-   from the `bootstrap admin seeded permissions=0x…` log line.
-3. **Drop the volume and re-seed** — *only* if the deployment is
-   still effectively empty (no real account history, news, or files
-   you care about). `docker compose down -v && docker compose up -d`
-   wipes the volume and fires the seed afresh.
-4. **One-shot env-var hook** — `HEIDRUN_RESET_ADMIN_PERMISSIONS=1`
-   (or `reset_admin_permissions = true` in the TOML) rewrites the
-   bootstrap admin row's permissions to `UserPrivileges.all` on the
-   next startup, even when the row already exists. Logs
-   `bootstrap admin permissions reset (HEIDRUN_RESET_ADMIN_PERMISSIONS)`
-   at INFO. Flip on, deploy once, flip back off so subsequent
-   restarts don't clobber any operator-tightened permissions:
-   ```bash
-   HEIDRUN_RESET_ADMIN_PERMISSIONS=1 docker compose up -d
-   # confirm the log line, then:
-   unset HEIDRUN_RESET_ADMIN_PERMISSIONS   # or remove the env line
-   docker compose up -d
-   ```
-
-### Guest account
-
-Anonymous connections (empty login on the wire) attach to a real
-`guest` row in the accounts DB. The server ensures the row exists at
-every startup, so:
-
-- Operators **modify guest privileges the same way they modify any
-  other account** — `modifyLogin` (transID 353) from a connected
-  admin client. The change persists across restarts; the seed only
-  fills in the row when it's missing.
-- Default seed: chat (read + send), private chat + DMs, news read,
-  file + folder downloads, `showInList`. Deliberately **without**
-  `.getUserInfo` so guests can't fetch other users' IPs / login
-  timestamps / client versions via the 303 transaction.
-- To lock anonymous access out entirely, `deleteLogin` (transID 351)
-  the `guest` row. Empty-login connections then attach with `nil`
-  privileges (same as the pre-guest-account behaviour) — every
-  gated handler rejects them.
-
-The seed log line on startup is:
-
-```
-guest account seeded   login=guest permissions=0x18000103e04
-```
-
-It only fires on the first launch (or after a `deleteLogin guest` +
-restart). Subsequent restarts see the row and keep whatever
-permissions the operator left in it.
-
-### Ports
-
-The server binds two adjacent TCP ports: `port` (Hotline control) and
-`port + 1` (HTXF file transfer side-channel). Both must be reachable
-from clients. Most firewalls just open both — they're conventionally
-5500 + 5501.
-
-When TLS is enabled (`tls_port` / `HEIDRUN_TLS_PORT`), a second pair
-binds on `tls_port` and `tls_port + 1`. The recommended convention is
-5502 + 5503 so the cleartext and TLS ports never share a host:port.
-
-### TLS
-
-The server supports an optional TLS sibling listener pair on top of
-the cleartext one. When configured, both the Hotline control channel
-and HTXF file transfers are encrypted end-to-end; sniffing the wire
-reveals no readable Hotline frames or file bytes. The cleartext pair
-stays bound for legacy clients, so enabling TLS is purely additive.
-
-#### Self-signed certificate (no public CA)
-
-You don't need a publicly-issued cert. The server serves whatever cert
-you give it — NIOSSL doesn't validate its own — so a self-signed pair
-works with no extra server config. Generate one (replace the CN with
-your hostname or IP):
-
-```bash
-openssl req -x509 -newkey rsa:2048 -nodes -days 825 \
-  -keyout key.pem -out cert.pem \
-  -subj "/CN=hotline.example.com"
-```
-
-Point the existing TLS settings at the two files — env
-(`HEIDRUN_TLS_CERTIFICATE=cert.pem`, `HEIDRUN_TLS_PRIVATE_KEY=key.pem`)
-or the `tls_certificate` / `tls_private_key` TOML keys — and set
-`HEIDRUN_TLS_PORT`. The same `heidrun`-readable permissions notes below
-apply.
-
-On first connect the Heidrun client shows the certificate's SHA-256
-fingerprint and asks you to trust it (trust-on-first-use), then pins it
-for that bookmark — later connects are silent. If you regenerate the
-cert, clients warn that the fingerprint changed and let you re-trust.
-For a publicly-issued cert instead, use the Let's Encrypt flow below.
-
-#### Let's Encrypt (publicly-issued)
-
-**1. Get a certificate.** Production deploys use a publicly-issued
-TLS cert (Let's Encrypt is the default choice). Since HeidrunServer
-doesn't speak HTTP, ACME HTTP-01 isn't an option — use **DNS-01**:
-
-```bash
-sudo certbot certonly \
-  --manual --preferred-challenges dns \
-  -d hotline.example.com
-```
-
-Certbot stores the issued cert under
-`/etc/letsencrypt/live/<domain>/` (or wherever your certbot working
-directory points). The two files Heidrun needs are `fullchain.pem`
-(server cert + intermediates) and `privkey.pem`.
-
-**2. Mount the cert pair into the container.** Don't bind-mount
-certbot's working directory directly — Certbot writes `live/` and
-`archive/` as `0700 root:root`, and the unprivileged `heidrun` user
-inside the container can't traverse into them. The first symptom is
-a startup error like
-`error=missingCertificate(path: ".../fullchain.pem")` — misleading;
-the file is there, the process just can't `stat` it past the parent
-directory's perms.
-
-The clean fix is a dedicated heidrun-owned directory on the host that
-mirrors the two files. One-time setup:
-
-```bash
-HEIDRUN_UID=$(docker exec heidrun-server id -u heidrun)
-HEIDRUN_GID=$(docker exec heidrun-server id -g heidrun)
-sudo mkdir -p /etc/heidrun-server/tls
-sudo cp -L /etc/letsencrypt/live/hotline.example.com/fullchain.pem /etc/heidrun-server/tls/
-sudo cp -L /etc/letsencrypt/live/hotline.example.com/privkey.pem   /etc/heidrun-server/tls/
-sudo chown -R "$HEIDRUN_UID:$HEIDRUN_GID" /etc/heidrun-server/tls
-sudo chmod 644 /etc/heidrun-server/tls/fullchain.pem
-sudo chmod 640 /etc/heidrun-server/tls/privkey.pem
-```
-
-The `-L` follows the symlinks under `live/` and copies the real
-bytes — if you skip it, the symlinks dangle inside the container.
-
-Then in `docker-compose.yml`, uncomment the TLS bind mount and the
-three TLS env vars (the compose file's commented stubs match this
-layout verbatim):
-
-```yaml
-volumes:
-  - /etc/heidrun-server/tls:/etc/heidrun-server/tls:ro
-ports:
-  - "5502:5502"
-  - "5503:5503"
-environment:
-  HEIDRUN_TLS_PORT: "5502"
-  HEIDRUN_TLS_CERTIFICATE: "/etc/heidrun-server/tls/fullchain.pem"
-  HEIDRUN_TLS_PRIVATE_KEY: "/etc/heidrun-server/tls/privkey.pem"
-```
-
-If you're using `ufw-docker`, open the two new ports the same way as
-5500/5501 — plain `ufw allow` doesn't cover Docker-DNAT'd ports.
-
-**3. Wire up renewal.** Certbot writes a new cert into `live/<domain>/`
-on every successful `certbot renew`, but the heidrun process loads
-the TLS context once at startup and won't pick up the new file until
-it restarts. Add a deploy hook so a fresh cert auto-propagates and
-the process cycles. The first half (copy + chown + perms) is
-identical across deploy targets; only the restart command differs.
-
-#### Docker Compose deploy
-
-```bash
-sudo tee /etc/letsencrypt/renewal-hooks/deploy/heidrun.sh >/dev/null <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-LIVE_DIR="/etc/letsencrypt/live/hotline.example.com"
-DEST="/etc/heidrun-server/tls"
-HEIDRUN_UID=$(docker exec heidrun-server id -u heidrun)
-HEIDRUN_GID=$(docker exec heidrun-server id -g heidrun)
-cp -L "$LIVE_DIR/fullchain.pem" "$DEST/fullchain.pem"
-cp -L "$LIVE_DIR/privkey.pem"   "$DEST/privkey.pem"
-chown "$HEIDRUN_UID:$HEIDRUN_GID" "$DEST"/{fullchain,privkey}.pem
-chmod 644 "$DEST/fullchain.pem"
-chmod 640 "$DEST/privkey.pem"
-docker compose -f /path/to/heidrun/docker-compose.yml restart heidrun
-EOF
-sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/heidrun.sh
-```
-
-#### systemd deploy (Linux)
-
-The unit at `deploy/systemd/heidrun-server.service` already grants
-the heidrun service user read access to `/etc/heidrun-server` via
-`ReadOnlyPaths=`, so the same `/etc/heidrun-server/tls/` layout
-works without changes. The deploy hook only needs to know the
-service user's `uid:gid` (which is whatever `useradd --system
-heidrun` picked at install time):
-
-```bash
-sudo tee /etc/letsencrypt/renewal-hooks/deploy/heidrun.sh >/dev/null <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-LIVE_DIR="/etc/letsencrypt/live/hotline.example.com"
-DEST="/etc/heidrun-server/tls"
-cp -L "$LIVE_DIR/fullchain.pem" "$DEST/fullchain.pem"
-cp -L "$LIVE_DIR/privkey.pem"   "$DEST/privkey.pem"
-chown heidrun:heidrun "$DEST"/{fullchain,privkey}.pem
-chmod 644 "$DEST/fullchain.pem"
-chmod 640 "$DEST/privkey.pem"
-systemctl restart heidrun-server
-EOF
-sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/heidrun.sh
-```
-
-#### launchd deploy (macOS)
-
-`launchctl kickstart -k` stops the daemon and immediately re-launches
-it (the `-k` is the "kill first" flag). The user/group names match
-whatever's set in the `.plist`:
-
-```bash
-sudo tee /usr/local/etc/heidrun-server/renew-tls.sh >/dev/null <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-LIVE_DIR="/etc/letsencrypt/live/hotline.example.com"
-DEST="/usr/local/etc/heidrun-server/tls"
-cp -L "$LIVE_DIR/fullchain.pem" "$DEST/fullchain.pem"
-cp -L "$LIVE_DIR/privkey.pem"   "$DEST/privkey.pem"
-chown _heidrun:_heidrun "$DEST"/{fullchain,privkey}.pem
-chmod 644 "$DEST/fullchain.pem"
-chmod 640 "$DEST/privkey.pem"
-launchctl kickstart -k system/org.tastybytes.heidrun-server
-EOF
-sudo chmod +x /usr/local/etc/heidrun-server/renew-tls.sh
-sudo ln -sf /usr/local/etc/heidrun-server/renew-tls.sh \
-            /etc/letsencrypt/renewal-hooks/deploy/heidrun.sh
-```
-
-(macOS doesn't have a `heidrun` system user out of the box — pick a
-service account name when you install the LaunchDaemon and use it
-consistently across the `.plist` and the hook script.)
-
-#### Notes that apply to all three
-
-Certbot runs every executable in `/etc/letsencrypt/renewal-hooks/deploy/`
-once after a successful renewal — exit non-zero from the hook and
-Certbot fails the renewal, so `set -euo pipefail` is doing real
-work. Test the hook manually after first install with
-`sudo /etc/letsencrypt/renewal-hooks/deploy/heidrun.sh`.
-
-The restart only cycles the TLS listener pair; the cleartext pair
-on 5500/5501 is dropped along with it, so any in-flight cleartext
-sessions also disconnect. Consider scheduling renewal off-peak if
-that matters.
-
-**Half-configured deploys fail fast.** Setting `tls_port` without
-both a cert path and a key path throws at startup with a typed
-`TLSContextError.loadFailed(reason: …)` instead of silently falling
-back to cleartext — so an operator who thought they had TLS can't
-end up with an unencrypted listener by accident.
-
-### Tracker registration
-
-When `HEIDRUN_TRACKERS` (or the TOML `trackers = […]` array) is set,
-the server sends one UDP registration datagram to each configured
-tracker every 5 minutes. The packet advertises this server's name,
-description, control port, live user count, and an optional
-tracker-side password. Browsing Hotline clients then fetch the list
-from the tracker and connect to whatever servers appear in it.
-
-The Hotline tracker protocol uses **two separate ports**: servers
-register over **UDP 5499** (the default for entries here), while
-clients fetch the list over **TCP 5498**. Registering on 5498 by
-mistake means nothing receives the datagram and the server silently
-never appears in any listing — so tracker entries default to port 5499.
-
-**Verifying the announcer is running.** The boot log carries three
-INFO lines that tell you what the process actually picked up:
-
-```
-tracker configuration loaded   count=N hosts=...
-tracker announcer starting     trackers=N
-tracker registered             tracker=hltracker.com:5499 bytes=NN  (every 5 min)
-```
-
-If you see `tracker announcer disabled (no trackers configured)`
-instead, `HEIDRUN_TRACKERS` didn't reach the process. Verify the env
-var inside the container — env vars set in `docker-compose.yml` only
-take effect after a `docker compose up -d --build` (or at least
-`docker compose up -d`) cycle:
-
-```bash
-docker exec heidrun-server env | grep TRACK
-```
-
-**ufw + ufw-docker.** The announcer runs inside the container and
-sends outbound UDP to `tracker-host:5499`. ufw's default outbound
-policy is allow, but `ufw-docker`'s `after.rules` block can restrict
-container egress in setups that have been hardened. `bytes=NN` in the
-log only confirms the kernel accepted the write — not that the packet
-left the host. If registrations are succeeding from the server's
-perspective but the server doesn't appear in tracker listings, capture
-on the host to confirm the datagram actually goes out:
-
-```bash
-sudo tcpdump -i any -n udp port 5499
-# wait up to 5 min for the next cycle (or restart the container to
-# force an immediate first send).
-```
-
-A successful send shows one outbound UDP packet from the host's
-public IP to the tracker. No packet on the wire = ufw / ufw-docker /
-the docker bridge is dropping it; allow outbound UDP to port 5499
-from the docker network's CIDR.
-
-**Server reachability.** Trackers hand `advertisedPort` (your
-`HEIDRUN_PORT`, default 5500) back to browsing clients, who then
-dial `your-public-IP:5500`. If port 5500 / 5501 aren't reachable from
-the public internet (firewall, ufw-docker without the matching
-allow), clients will see the listing but fail to connect — symptoms
-look identical to "we don't get listed" from a user's perspective.
-Open 5500/5501 (and 5502/5503 if TLS is on) inbound the same way as
-described in the Ports section above.
-
-### State directories
-
-| Path | What's there |
+| Command | What it does |
 |---|---|
-| `db_path` | One SQLite file. Holds **accounts** + per-file **metadata** (comments + HFS type/creator). Backed up = backed up accounts + metadata |
-| `files_root` | The file tree the server serves. Plain on-disk files; modern filesystems handle it. File comments + HFS type/creator now persist via the SQLite DB above (path-keyed); files dropped on the tree out-of-band have no row and fall back to `.file/.unknown` defaults |
+| `/version` | Version, build id, Swift compiler, platform, ports, uptime, user count |
+| `/uptime` | One-liner: `*** uptime: 4d 11h 23m` |
+| `/who` / `/users` | Roster dump with nicknames + socket IDs |
+| `/whoami` | Self-info: nickname, socket, login, IP, client version, TLS yes/no, admin yes/no, away yes/no, raw privilege bitmask |
+| `/away` | Toggle the away flag; broadcasts `userChanged` |
+| `/me <action>` | IRC-style action chat |
+| `/broadcast <msg>` | Server-wide popup (transID 355). Admin-only (`.canBroadcast`) |
+| `/topic [text]` | Read or set the public chat topic. Set is admin-only |
+| `/kick <socketID>` | Disconnect a target. Admin-only (`.disconnectUsers`) |
+| `/invisible` / `/visible` | Hide / re-show in peer rosters. Admin-only |
+| `/help` | List every command with one-line description |
 
-### Resource forks
-
-Resource forks are intentionally dropped throughout. Files round-trip
-as data-fork-only. Modern macOS doesn't use resource forks, but if you
-need them for an archival workflow, both ends need work.
-
-### Persistent metadata
-
-The SQLite database carries accounts, their hashes, and per-file
-metadata (HFS type/creator + comments). Metadata is keyed by the
-file's relative path from `files_root` so the same DB works whether
-the files tree lives in the named volume or a bind-mounted RAID.
-Folder renames + moves rewrite descendant rows in one transaction;
-file deletes drop the row; uploads persist the FILP envelope's
-type/creator. Custom per-file icons are not yet persisted — that's
-the remaining v1.5 item in this area.
-
-### Server banner
-
-The Hotline `downloadBanner` transaction (transID 212) lets the
-server push a logo / splash image to connected clients. Heidrun
-clients display it as a strip at the top of the host workspace
-sidebar; other modern clients (mobius, mierau's hotline) show it on
-the connection-info screen.
-
-**1. Place the image somewhere readable by the heidrun user.** Same
-constraint as the TLS cert — the unprivileged process inside the
-container can't reach files under `0700 root:root` parents. The
-cleanest path on a Docker deploy is `/etc/heidrun-server/banner.jpg`,
-mounted alongside the TLS cert directory:
-
-```bash
-HEIDRUN_UID=$(docker exec heidrun-server id -u heidrun)
-HEIDRUN_GID=$(docker exec heidrun-server id -g heidrun)
-sudo install -d -o "$HEIDRUN_UID" -g "$HEIDRUN_GID" /etc/heidrun-server
-sudo install -m 0644 -o "$HEIDRUN_UID" -g "$HEIDRUN_GID" \
-    /path/to/banner.jpg /etc/heidrun-server/banner.jpg
-```
-
-**2. Configure compose** (uncomment the block already in
-`docker-compose.yml`):
-
-```yaml
-environment:
-  HEIDRUN_BANNER_PATH: "/etc/heidrun-server/banner.jpg"
-  HEIDRUN_BANNER_KIND: "jpeg"
-```
-
-`HEIDRUN_BANNER_KIND` is one of `jpeg` / `gif` / `bmp` / `pict` /
-`url`. JPEG is the realistic default for new deployments — every
-modern client decodes it via system image APIs (`NSImage`,
-`UIImage`, etc.). `url` mode treats the file's contents as a UTF-8
-link the client fetches itself (Heidrun's macOS client skips URL-
-mode banners in v1).
-
-**3. Restart the container.** Bytes are loaded once at startup and
-cached in memory — updating the image needs a `docker compose
-restart heidrun` (same workflow as the TLS cert).
-
-**Operational notes:**
-
-- Recommended size: ~468×60 pixels, the de-facto standard from the
-  classic Hotline era. Heidrun renders the bytes at native aspect
-  with an 80pt max height.
-- A missing / unreadable file logs a warning at startup and disables
-  the banner — 212 requests then reply with an error, which the
-  client maps to "no banner" rather than treating as a failure. A
-  half-configured deploy can't accidentally serve a stale or empty
-  banner.
-- The bytes ride the same HTXF side-channel as file downloads (port
-  + 1, or TLS sibling + 1 when TLS is on), with a banner-flavoured
-  preamble (`type=2`) so the dispatcher can distinguish it from a
-  regular file stream.
-
-### Chat slash commands
-
-Users can issue server commands by typing them into the public chat
-input. Slash-prefixed lines are intercepted server-side — they are
-never broadcast as chat, so only the sender sees the response.
-
-| command     | what it does                                                      |
-|-------------|-------------------------------------------------------------------|
-| `/version`  | private verbose system block: version, build id + date, Swift compiler version, platform, configured server name, listening ports (with TLS sibling pair when configured), uptime, live user count |
-| `/uptime`   | sender-only one-liner — `*** uptime: 4d 11h 23m` — a focused subset of `/version` |
-| `/who` / `/users` | sender-only roster dump: count + one line per user with their nickname and socket ID (so you have the IDs handy for `/kick`) |
-| `/whoami`   | sender-only 10-line self-info block: nickname, socket, login, remote `ip:port`, client version, login timestamp, TLS yes/no, admin yes/no, away yes/no, and the raw privilege bitmask (handy for "why doesn't my privilege X work?" debugging) |
-| `/away`     | toggles the `UserStatusFlags.away` bit immediately; broadcasts the new status to everyone via `userChanged` (301); confirms privately to the sender with `*** You are now away.` / `*** Welcome back.` |
-| `/me <action>` | IRC-style action chat. Broadcasts a 106 push to every session (sender included) with `isAction=true` and a mobius-style ` *<nick> <action>` line. Empty bodies surface `*** Usage: /me <action>`. |
-| `/broadcast <message>` | sends a server-wide broadcast popup (transID 355) to every connected session, including the sender so they see their own message as confirmation. Gated on the `.canBroadcast` privilege (admin-only by default). Guests / unprivileged accounts get a sender-only `*** Permission denied: …` reply. Empty bodies surface `*** Usage: /broadcast <message>`. |
-| `/topic [text]` | with no args, replies (sender-only) with the current public chat topic. With text, sets the public chat topic — gated on the `.canBroadcast` privilege (admin-only by default) — persists it and broadcasts TX 119 (Chat ID 0) to every connected client so their chat header updates live. |
-| `/kick <socketID>` | disconnects a target by their socket ID (find IDs with `/who`). Gated on the `.disconnectUsers` privilege (admin-only by default). Self-kick is refused, unknown sockets get a sender-only "no such user" reply, the kicked target's TCP connection is dropped, and every remaining session sees a `userLeft` (302). |
-| `/invisible` | hide from peer user lists. Broadcasts `userLeft` (302) so existing clients drop the row, filters subsequent `getUserList` (300) replies, and suppresses outbound `userChanged` broadcasts so status / nickname flips don't leak presence. The session stays fully connected — chat, broadcasts, file ops all reach them — they're just absent from rosters. Their own `/who` and `/whoami` still show themselves. Gated on `.disconnectUsers`. |
-| `/visible`  | re-introduce after `/invisible`: clears the registry's invisibility bit and broadcasts `userChanged` (301) so peers re-add the row with the session's current nickname / icon / status. Gated on `.disconnectUsers`. |
-| `/help`     | sender-only list of every registered command with a one-line description |
-
-Example `/version` reply (eight lines, joined by `\r` inside a single
-`chatPush`):
-
-```
-*** HeidrunServer 0.7.0
-*** build: a1b2c3d (2026-05-23)
-*** swift: 6.2
-*** platform: Linux Ubuntu 22.04.4 LTS
-*** server: HeidrunsInn
-*** ports: 5500/5501 (TLS 5502/5503)
-*** uptime: 4d 11h 23m
-*** users: 3
-```
-
-Parser specifics:
-
-- Single-`/` prefix only. `//emph` and a bare `/` fall through as
-  normal chat.
-- Case-insensitive on the command head — `/Version`, `/AWAY` work.
-- Unknown `/foo` produces a sender-only `*** Unknown command: /foo`
-  reply; nothing is broadcast.
-- Whitespace is trimmed; extra tokens after a known command are
-  silently ignored.
-
-The manual `/away` flag and the idle-away supervisor share a single
-reconciliation path (`applyAwayState`) on each session, so they can
-never disagree on the broadcast wire state — a manually-away user
-stays away across active packets, and the supervisor doesn't
-double-broadcast.
+Single `/` prefix only — `//foo` and a bare `/` fall through as normal chat. Case-insensitive on the command head.
 
 ## Tested deployment images
 
@@ -684,21 +97,28 @@ double-broadcast.
 | `swift:6.2-noble` (Ubuntu 24.04) | Builds + runs |
 | `swift:6.0-jammy` | **Too old** — swift-log 1.12+ requires Swift 6.2 |
 
-## See also
+## Architecture
 
-- `heidrun-server.example.toml` — annotated sample config
-- `Dockerfile` — production multi-stage Docker build
-- `docker-compose.yml` — single-command Docker deploy
-- `deploy/launchd/` — macOS LaunchDaemon plist
-- `deploy/systemd/` — Linux systemd unit
+`HeidrunServer` (lifecycle actor) binds the listener pair and owns the shared stores. Each accepted connection becomes a `ClientSession` actor that decodes Hotline packets via `HeidrunCore` and dispatches them across `ClientSession+*.swift` extensions (Admin, Files, PlainNews, ThreadedNews, PrivateChats, PrivateMessages, Banner, Misc). Replies are built with static `PacketEncoder` builders.
 
-## Out of scope (v1)
+Wire types and codecs live in the shared SPM package [`franckjej/heidrun-protocol`](https://github.com/franckjej/heidrun-protocol). Edits to the wire format happen there, not here.
 
-The following are deferred to v1.5:
+For protocol details (encoding quirks, transaction IDs, HTXF framing, 1904-epoch timestamps) see [`AGENTS.md`](AGENTS.md) or the heidrun-protocol README.
 
-- Persistent file icons (HFS type/creator + comments now persist; icon
-  blobs are still deferred)
-- Admin CLI tool (`heidrun-server-admin`)
-- launchd / systemd integration tests
-- Self-signed-cert opt-in on the client (TLS today requires a
-  publicly-trusted CA chain on the server)
+## License
+
+GPL-2.0. Full text in [`LICENSE`](LICENSE).
+
+### Dual licensing
+
+Copyright © Daubit & Francke GmbH. The copyright holder reserves all rights to license this code under other terms — commercial, proprietary, BSD/MIT-style, or any other arrangement — for its own products and for third parties on request. The GPL-2.0 grant above governs public/community use; it does not bind the copyright holder's re-use of the same code under different terms.
+
+For a non-GPL licence: `jens.francke@daubit-francke.de`.
+
+### Third-party
+
+Built on Apple's Apache 2.0 Swift packages: [swift-nio](https://github.com/apple/swift-nio), [swift-nio-ssl](https://github.com/apple/swift-nio-ssl), [swift-log](https://github.com/apple/swift-log), [swift-crypto](https://github.com/apple/swift-crypto). Persistence via [GRDB.swift](https://github.com/groue/GRDB.swift) (MIT). TOML parsing via [TOMLKit](https://github.com/LebJe/TOMLKit) (MIT).
+
+## Heritage
+
+Heidrun is a Swift 6 reimplementation of the 2002 Hotline Mac client by **Göran Granström**, whose original plug-in modules were GPL-2.0. This server is a new ground-up implementation but shares the protocol heritage and the same licensing posture.
