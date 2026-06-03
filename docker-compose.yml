@@ -1,22 +1,10 @@
 # Convenience compose file for HeidrunServer.
 #
 # Run from this repo's root:
-#   DOCKER_BUILDKIT=1 GH_TOKEN="$(gh auth token)" \
-#     docker compose up -d --build
+#   docker compose up -d --build
 #
 # Stop:
 #   docker compose down
-#
-# The build pulls the private `heidrun-protocol` SPM package over
-# HTTPS, authenticated with a GitHub token. `gh auth token` emits
-# one if you've run `gh auth login`. The top-level `secrets:` block
-# below forwards $GH_TOKEN into the build as a BuildKit secret
-# (compose v2+); see `Dockerfile` for how it's consumed without
-# landing in any image layer. On older compose, build the image
-# manually first:
-#   DOCKER_BUILDKIT=1 GH_TOKEN="$(gh auth token)" \
-#     docker build --secret id=gh_token,env=GH_TOKEN -t heidrun-server .
-#   docker compose up -d
 #
 # State persists in the `heidrun-data` named volume (DB + news JSON +
 # the file tree by default — see the "files tree" notes below for how
@@ -49,8 +37,6 @@ services:
       #   environment:
       #     HEIDRUN_BUILD: "v1.0.0"
       #     HEIDRUN_BUILD_DATE: "2026-06-01"
-      secrets:
-        - gh_token
     container_name: heidrun-server
     restart: unless-stopped
     ports:
@@ -271,11 +257,3 @@ services:
 
 volumes:
   heidrun-data:
-
-# Build-time secrets. Compose reads $GH_TOKEN from the shell that
-# invokes `docker compose build/up`; it's forwarded to BuildKit as a
-# secret file at /run/secrets/gh_token and consumed only by the
-# `swift package resolve` step in the Dockerfile. Not used at runtime.
-secrets:
-  gh_token:
-    environment: GH_TOKEN

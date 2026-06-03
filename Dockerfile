@@ -1,15 +1,8 @@
 # Multi-stage build for HeidrunServer.
 #
-# Build from this repo's root. The build needs a GitHub token with read
-# access to the private `heidrun-protocol` package — `gh auth token`
-# emits one if you've run `gh auth login`:
+# Build from this repo's root:
 #
-#   DOCKER_BUILDKIT=1 GH_TOKEN="$(gh auth token)" \
-#     docker build --secret id=gh_token,env=GH_TOKEN -t heidrun-server .
-#
-# The token is passed as a BuildKit secret, exposed only inside the
-# `swift package resolve` step via $GIT_CONFIG_*, and never written to
-# any file or image layer.
+#   docker build -t heidrun-server .
 #
 # Run:
 #   docker run -d --name heidrun \
@@ -51,7 +44,7 @@ FROM swift:6.2-jammy AS build
 
 # GRDB links system SQLite; the base image doesn't ship the dev
 # headers. `git` + `ca-certificates` let SPM clone HTTPS package
-# dependencies (including the private heidrun-protocol).
+# dependencies.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends \
         libsqlite3-dev \
@@ -70,30 +63,16 @@ COPY Package.swift Package.resolved ./
 COPY Sources ./Sources
 COPY Tests ./Tests
 
-# Single RUN: resolve + build + install share one auth setup. The
-# token is written to a temporary entry in /root/.gitconfig, then
-# `--remove-section`'d before the layer commits — git is guaranteed
-# to read this config when SPM shells out to it. Three insteadOf
-# rewrites cover HTTPS plus both SSH URL shapes so that a cache
-# mount carrying an `origin` URL from an earlier build still
-# resolves through the authed HTTPS endpoint. If RUN fails before
-# the cleanup line, the layer is discarded entirely — the token has
-# no path into the final image.
-RUN --mount=type=secret,id=gh_token,required=true \
-    --mount=type=cache,target=/root/.cache/org.swift.swiftpm \
+# Single RUN: resolve + build + install. heidrun-protocol is fetched
+# anonymously over HTTPS — the repo is public.
+RUN --mount=type=cache,target=/root/.cache/org.swift.swiftpm \
     --mount=type=cache,target=/src/.build \
-    GH_TOKEN="$(cat /run/secrets/gh_token)" \
- && AUTHED_BASE="https://x-access-token:${GH_TOKEN}@github.com/" \
- && git config --global "url.${AUTHED_BASE}.insteadOf" "https://github.com/" \
- && git config --global --add "url.${AUTHED_BASE}.insteadOf" "git@github.com:" \
- && git config --global --add "url.${AUTHED_BASE}.insteadOf" "ssh://git@github.com/" \
- && swift build \
+    swift build \
       --configuration release \
       --product HeidrunServer \
  && install -m 0755 \
       .build/release/HeidrunServer \
-      /usr/local/bin/heidrun-server \
- && git config --global --remove-section "url.${AUTHED_BASE}"
+      /usr/local/bin/heidrun-server
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Runtime stage

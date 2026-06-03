@@ -43,19 +43,15 @@ swift build
 swift test
 swift test --filter HeidrunServerKitTests.AccountStoreTests   # single suite
 
-# Resolve / refresh the private heidrun-protocol package
+# Resolve / refresh the heidrun-protocol package
 swift package resolve
 
-# Docker build (private package needs a GitHub token via BuildKit secret)
-DOCKER_BUILDKIT=1 GH_TOKEN="$(gh auth token)" \
-  docker build --secret id=gh_token,env=GH_TOKEN -t heidrun-server .
+# Docker build
+docker build -t heidrun-server .
 
-# Docker compose (compose v2+ honours the build secret stanza)
-DOCKER_BUILDKIT=1 GH_TOKEN="$(gh auth token)" \
-  docker compose up -d --build
+# Docker compose
+docker compose up -d --build
 ```
-
-The `heidrun-protocol` package is **private**. `swift package resolve` and the Docker build both need a GitHub token. For Docker we mount it via BuildKit secrets + a `.gitconfig` `insteadOf` rewrite so the token never lands in an image layer (see `Dockerfile`).
 
 ## Architecture
 

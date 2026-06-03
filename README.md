@@ -31,14 +31,8 @@ fresh database — **change them immediately for any real deployment**.
 
 ### Docker
 
-The build fetches the private `heidrun-protocol` SPM package from
-GitHub over HTTPS, authenticated with a GitHub token. `gh auth login`
-once, then `gh auth token` emits a token the BuildKit secret mount
-consumes; the token never lands in any image layer.
-
 ```bash
-DOCKER_BUILDKIT=1 GH_TOKEN="$(gh auth token)" \
-  docker build --secret id=gh_token,env=GH_TOKEN -t heidrun-server .
+docker build -t heidrun-server .
 
 docker run -d --name heidrun \
   -p 5500:5500 -p 5501:5501 \
@@ -47,11 +41,10 @@ docker run -d --name heidrun \
   heidrun-server
 ```
 
-Or with `docker-compose` (compose v2+ honours the build secret stanza):
+Or with `docker-compose`:
 
 ```bash
-DOCKER_BUILDKIT=1 GH_TOKEN="$(gh auth token)" \
-  docker compose up -d --build
+docker compose up -d --build
 ```
 
 ### Linux (systemd)
@@ -115,8 +108,7 @@ via `HEIDRUN_BUILD_INFO_DIR` (pre-set in the Dockerfile). No extra
 env vars to remember:
 
 ```bash
-DOCKER_BUILDKIT=1 GH_TOKEN="$(gh auth token)" \
-  docker compose up -d --build
+docker compose up -d --build
 ```
 
 A new commit invalidates only the small `git-info` stage — the
