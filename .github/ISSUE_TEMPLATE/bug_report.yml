@@ -1,0 +1,67 @@
+name: Bug Report
+description: Report a bug in heidrun-server
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug report. Please fill in the details below so the
+        issue can be reproduced. For security vulnerabilities, do **not** use
+        this form — see the security policy linked on the new-issue page.
+  - type: input
+    id: version
+    attributes:
+      label: Version / tag
+      description: The tag you deployed, or the commit you built from.
+      placeholder: "1.0.0-rc7"
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment
+      options:
+        - Docker / docker-compose
+        - Linux native (systemd)
+        - macOS (launchd)
+        - Binary, run manually
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant config
+      description: The relevant part of your `heidrun-server.toml`. Redact secrets.
+      render: toml
+    validations:
+      required: false
+  - type: input
+    id: client
+    attributes:
+      label: Client used to reproduce
+      description: Which client (and version) triggered the behaviour?
+      placeholder: "Heidrun 1.0.0 (581) / classic Hotline 1.2.3 / …"
+    validations:
+      required: false
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: What did you do, step by step?
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Server logs
+      description: Relevant server output around the time of the issue. Rendered as code.
+      render: text
+    validations:
+      required: false
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected vs actual behaviour
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
