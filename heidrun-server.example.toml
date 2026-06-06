@@ -8,6 +8,7 @@
 # HEIDRUN_TLS_PORT, HEIDRUN_TLS_CERTIFICATE, HEIDRUN_TLS_PRIVATE_KEY,
 # HEIDRUN_BANNER_PATH, HEIDRUN_BANNER_KIND,
 # HEIDRUN_NEWS_PATH, HEIDRUN_NEWS_MODE, HEIDRUN_NEWS_RESET,
+# HEIDRUN_USER_HISTORY,
 # HEIDRUN_IDLE_AWAY_THRESHOLD, HEIDRUN_IDLE_AWAY_POLL) override whatever is set here.
 # TZ sets the container timezone stamped onto flat-news post dates.
 #
@@ -61,6 +62,13 @@ files_root = "/var/lib/heidrun/files"
 # news. Omit (or leave unset) for no reset. Env override:
 # HEIDRUN_NEWS_RESET.
 # news_reset = "all"
+
+# User join/leave history (the admin `/usershistory` chat command).
+# true (default) records who comes and goes; false disables recording
+# entirely — a privacy kill-switch. History persists only when db_path
+# points at a real file; otherwise it's in-memory and wipes on restart.
+# Env override: HEIDRUN_USER_HISTORY ("0"/"false"/"no"/"off" disables).
+# user_history_enabled = false
 
 # Seeded only when the accounts table is empty (i.e. first startup
 # against a fresh DB). Operators should change these credentials via

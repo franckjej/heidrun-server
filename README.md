@@ -28,7 +28,7 @@ A Swift 6, pure-SwiftNIO Hotline-protocol server. Pairs with the [Heidrun](https
 - Server banner (transID 212) — JPEG / GIF / BMP / PICT / URL
 - Per-file metadata (HFS type/creator + comments) persisted alongside accounts
 - Idle-away supervisor — auto-flips the away flag after configurable inactivity
-- Server-side chat commands — `/version`, `/who`, `/topic`, `/broadcast`, `/kick`, `/away`, `/me`, …
+- Server-side chat commands — `/version`, `/who`, `/topic`, `/broadcast`, `/kick`, `/usershistory`, `/away`, `/me`, …
 - Structured logging via swift-log, graceful shutdown on SIGINT / SIGTERM
 
 ## Quick start
@@ -63,6 +63,7 @@ The annotated source of truth for the config surface is [`heidrun-server.example
 | `HEIDRUN_AGREEMENT` | _(unset)_ | Banner text pushed after login (transID 109) |
 | `HEIDRUN_CHAT_SUBJECT` | _(empty)_ | Initial public chat topic |
 | `HEIDRUN_DB_PATH` | _(in-memory)_ | SQLite file for accounts + file metadata |
+| `HEIDRUN_USER_HISTORY` | `on` | `0`/`false`/`no`/`off` disables `/usershistory` recording (privacy kill-switch) |
 | `HEIDRUN_FILES_ROOT` | _(tempdir)_ | Directory the file ops operate on |
 | `HEIDRUN_NEWS_PATH` | _(in-memory)_ | JSON snapshot file for news state |
 | `HEIDRUN_ADMIN_LOGIN` / `HEIDRUN_ADMIN_PASSWORD` | `admin` / `admin` | Bootstrap admin (only seeded on a fresh DB) |
@@ -88,6 +89,7 @@ Users can issue server commands by typing them into the public chat input. Slash
 | `/broadcast <msg>` | Server-wide popup (transID 355). Admin-only (`.canBroadcast`) |
 | `/topic [text]` | Read or set the public chat topic. Set is admin-only |
 | `/kick <socketID>` | Disconnect a target. Admin-only (`.disconnectUsers`) |
+| `/usershistory [hours]` / `/history` | User join/leave history for the last 1–24h (default 1h). Admin-only (`.disconnectUsers`). Disable with `HEIDRUN_USER_HISTORY=0` |
 | `/invisible` / `/visible` | Hide / re-show in peer rosters. Admin-only |
 | `/help` | List every command with one-line description |
 

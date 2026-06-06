@@ -179,6 +179,14 @@ services:
       # skip the agreement push entirely.
       # HEIDRUN_AGREEMENT: "Welcome to the server. Be kind."
 
+      # User join/leave history (the admin `/usershistory` chat command).
+      # On by default. Set to "0" (or false/no/off) to disable recording
+      # entirely — a privacy kill-switch for operators who don't want to
+      # log who comes and goes. History persists only when HEIDRUN_DB_PATH
+      # points at a persistent file; otherwise it's in-memory and wipes
+      # on restart, like accounts.
+      # HEIDRUN_USER_HISTORY: "0"
+
       # ---------------------------------------------------------------
       # TRACKER REGISTRATION (host[:port][:password])
       # ---------------------------------------------------------------

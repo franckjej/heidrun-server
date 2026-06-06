@@ -59,6 +59,8 @@ extension ClientSession {
             await handleWhoamiCommand(args: args)
         case "uptime":
             await handleUptimeCommand(args: args)
+        case "usershistory", "history":
+            await handleUsersHistoryCommand(args: args)
         case "kick":
             await handleKickCommand(args: args)
         case "invisible":
@@ -282,6 +284,7 @@ extension ClientSession {
             "Available commands:",
             "  /version            — server version, build, and runtime info",
             "  /uptime             — show server uptime",
+            "  /usershistory [h]   — user join/leave history, last h hours (admin)",
             "  /who, /users        — list connected users",
             "  /whoami             — your own session info",
             "  /away               — toggle your away status",
@@ -293,6 +296,46 @@ extension ClientSession {
             "  /visible            — re-appear in peer user lists (admin)",
             "  /help               — show this list"
         ])
+    }
+
+    /// `/usershistory [hours]` (alias `/history`) — admin-only. Lists
+    /// every user that entered or left in the last `hours` (default 1,
+    /// clamped 1…24), oldest first, one `HH:mm:ss  <nick> entered|left`
+    /// line each. Gated on `.disconnectUsers`. Replies that it's off when
+    /// the operator disabled history (user_history_enabled=false /
+    /// HEIDRUN_USER_HISTORY=0).
+    func handleUsersHistoryCommand(args: [String]) async {
+        guard hasPrivilege(.disconnectUsers) else {
+            await sendSystemReply("Permission denied: /usershistory requires the disconnectUsers privilege.")
+            return
+        }
+        guard let userEvents else {
+            await sendSystemReply("User history is disabled on this server.")
+            return
+        }
+        let hours = max(1, min(24, args.first.flatMap(Int.init) ?? 1))
+        let events = await userEvents.events(withinHours: hours)
+        guard !events.isEmpty else {
+            await sendSystemReply("No user activity in the last \(hours)h.")
+            return
+        }
+        var lines = ["User history (last \(hours)h):"]
+        for event in events {
+            let when = Self.formatHistoryTime(event.timestamp)
+            let verb = event.kind == .entered ? "entered" : "left"
+            lines.append("  \(when)  \(event.nickname) \(verb)")
+        }
+        await sendSystemReply(lines: lines)
+    }
+
+    /// `HH:mm:ss` in the server's local timezone — terse, time-only (the
+    /// list is bounded to 24h). Distinct from `formatLoginTime`'s
+    /// date+zone form.
+    static func formatHistoryTime(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm:ss"
+        return formatter.string(from: date)
     }
 
     /// `/broadcast <message>` — send a server-wide broadcast popup

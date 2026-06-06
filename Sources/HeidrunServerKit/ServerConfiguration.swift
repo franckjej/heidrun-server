@@ -149,6 +149,13 @@ public struct ServerConfiguration: Sendable {
     /// deliberately opt-in.
     public var resetAdminPermissions: Bool
 
+    /// Privacy kill-switch for the `/usershistory` command. When `false`,
+    /// `UserEventStore` is never constructed so no join/leave events are
+    /// recorded, and the command replies that history is disabled.
+    /// Defaults to `true`. Config: `user_history_enabled`; env:
+    /// `HEIDRUN_USER_HISTORY` (`0`/`false`/`no`/`off` disables).
+    public var userHistoryEnabled: Bool
+
     public init(
         port: UInt16 = 5500,
         bindHost: String = "0.0.0.0",
@@ -175,7 +182,8 @@ public struct ServerConfiguration: Sendable {
         idleAwayThreshold: TimeInterval? = 600,
         idleAwayPollInterval: TimeInterval = 60,
         startedAt: Date = Date(),
-        resetAdminPermissions: Bool = false
+        resetAdminPermissions: Bool = false,
+        userHistoryEnabled: Bool = true
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -203,5 +211,6 @@ public struct ServerConfiguration: Sendable {
         self.idleAwayPollInterval = idleAwayPollInterval
         self.startedAt = startedAt
         self.resetAdminPermissions = resetAdminPermissions
+        self.userHistoryEnabled = userHistoryEnabled
     }
 }

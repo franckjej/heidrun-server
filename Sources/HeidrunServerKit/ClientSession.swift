@@ -15,6 +15,9 @@ public actor ClientSession {
     let transfers: TransferRegistry
     let privateChats: PrivateChatRegistry
     let configuration: ServerConfiguration
+    /// User join/leave history sink. `nil` when the operator disabled
+    /// history (kill-switch) — recording is then skipped everywhere.
+    let userEvents: UserEventStore?
     let stringEncoding: String.Encoding
     let writer: @Sendable (Data) async throws -> Void
     let closer: @Sendable () async -> Void
@@ -97,6 +100,7 @@ public actor ClientSession {
         transfers: TransferRegistry,
         privateChats: PrivateChatRegistry,
         configuration: ServerConfiguration,
+        userEvents: UserEventStore? = nil,
         stringEncoding: String.Encoding,
         remoteHost: String? = nil,
         isTLS: Bool = false,
@@ -113,6 +117,7 @@ public actor ClientSession {
         self.transfers = transfers
         self.privateChats = privateChats
         self.configuration = configuration
+        self.userEvents = userEvents
         self.stringEncoding = stringEncoding
         self.remoteHost = remoteHost
         self.isTLS = isTLS
@@ -364,6 +369,7 @@ public actor ClientSession {
                 }
             }
             await registry.unregister(socketID: leftSocket)
+            await userEvents?.record(.left, nickname: nickname, socket: leftSocket)
             await registry.broadcast(PacketEncoder.userLeftPush(socketID: leftSocket))
             serverLogger.info("user disconnected", metadata: [
                 "socketID": "\(leftSocket)",
@@ -646,6 +652,7 @@ public actor ClientSession {
             emoji: emojiValue
         )
         self.socketID = assigned
+        await userEvents?.record(.entered, nickname: nick, socket: assigned)
         serverLogger.info("user logged in", metadata: [
             "socketID": "\(assigned)",
             "nickname": "\(nick)",

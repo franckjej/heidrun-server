@@ -81,6 +81,11 @@ public struct ServerConfigurationFile: Codable, Sendable {
     /// off so subsequent restarts don't clobber operator edits.
     public var resetAdminPermissions: Bool?
 
+    /// Privacy kill-switch for `/usershistory`. `false` disables
+    /// recording entirely. Defaults to on; env `HEIDRUN_USER_HISTORY`
+    /// overrides. Config key `user_history_enabled`.
+    public var userHistoryEnabled: Bool?
+
     public struct BootstrapAdminFile: Codable, Sendable {
         public var login: String?
         public var password: String?
@@ -120,7 +125,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
         bannerKind: String? = nil,
         idleAwayThreshold: Int? = nil,
         idleAwayPollInterval: Int? = nil,
-        resetAdminPermissions: Bool? = nil
+        resetAdminPermissions: Bool? = nil,
+        userHistoryEnabled: Bool? = nil
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -145,6 +151,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
         self.idleAwayThreshold = idleAwayThreshold
         self.idleAwayPollInterval = idleAwayPollInterval
         self.resetAdminPermissions = resetAdminPermissions
+        self.userHistoryEnabled = userHistoryEnabled
     }
 
     enum CodingKeys: String, CodingKey {
@@ -171,6 +178,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
         case idleAwayThreshold = "idle_away_threshold"
         case idleAwayPollInterval = "idle_away_poll_interval"
         case resetAdminPermissions = "reset_admin_permissions"
+        case userHistoryEnabled = "user_history_enabled"
     }
 
     public enum LoadError: Swift.Error, Equatable {
@@ -328,6 +336,17 @@ public struct ServerConfigurationFile: Codable, Sendable {
             }
             return resetAdminPermissions ?? false
         }()
+        // User-history kill-switch — env wins; "0"/"false"/"no"/"off"
+        // (any case) disables. On by default (file value, then `true`).
+        let resolvedUserHistory: Bool = {
+            if let raw = environment["HEIDRUN_USER_HISTORY"] {
+                switch raw.lowercased() {
+                case "0", "false", "no", "off": return false
+                default: return true
+                }
+            }
+            return userHistoryEnabled ?? true
+        }()
 
         let resolvedIdlePoll: TimeInterval = {
             if let raw = environment["HEIDRUN_IDLE_AWAY_POLL"], let parsed = Int(raw), parsed > 0 {
@@ -361,7 +380,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
             bannerKind: resolvedBannerKind,
             idleAwayThreshold: resolvedIdleThreshold,
             idleAwayPollInterval: resolvedIdlePoll,
-            resetAdminPermissions: resolvedReset
+            resetAdminPermissions: resolvedReset,
+            userHistoryEnabled: resolvedUserHistory
         )
     }
 }

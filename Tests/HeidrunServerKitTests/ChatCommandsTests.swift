@@ -1044,4 +1044,74 @@ struct ChatCommandsTests {
             #expect(try await errorLine.contains("/topic requires the canBroadcast privilege"))
         }
     }
+
+    @Test("/usershistory lists entered/left for an admin caller")
+    func usersHistoryAsAdmin() async throws {
+        let configuration = ServerConfiguration(
+            port: 0,
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin", password: "admin", nickname: "Admin"
+            )
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let admin = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin"
+            )
+            // A guest enters, then leaves.
+            let bob = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Bob")
+            try await Task.sleep(for: .milliseconds(150))
+            await bob.disconnect()
+
+            // `disconnect()` returns before the server's async cleanup
+            // records the `.left` event, so poll the real condition (the
+            // history listing Bob's leave) rather than guess a fixed delay.
+            var block = ""
+            for _ in 0..<40 {
+                async let reply = Self.awaitChat(admin) { $0.contains("User history") }
+                try await admin.sendChat("/usershistory", in: nil, isAction: false)
+                block = try await reply
+                if block.contains("Bob left") { break }
+                try await Task.sleep(for: .milliseconds(50))
+            }
+
+            #expect(block.contains("User history (last 1h):"))
+            #expect(block.contains("Bob entered"))
+            #expect(block.contains("Bob left"))
+        }
+    }
+
+    @Test("/usershistory is denied for a non-admin")
+    func usersHistoryDeniedForGuest() async throws {
+        try await ServerTestHelpers.withRunningServer { _, port in
+            let alice = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Alice")
+            try await Task.sleep(for: .milliseconds(100))
+
+            async let reply = Self.awaitChat(alice) { $0.contains("Permission denied") }
+            try await alice.sendChat("/usershistory", in: nil, isAction: false)
+            let line = try await reply
+            #expect(line.contains("/usershistory requires the disconnectUsers privilege"))
+        }
+    }
+
+    @Test("/usershistory reports disabled when the kill-switch is off")
+    func usersHistoryDisabled() async throws {
+        let configuration = ServerConfiguration(
+            port: 0,
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin", password: "admin", nickname: "Admin"
+            ),
+            userHistoryEnabled: false
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let admin = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin"
+            )
+            try await Task.sleep(for: .milliseconds(100))
+
+            async let reply = Self.awaitChat(admin) { $0.contains("disabled") }
+            try await admin.sendChat("/history", in: nil, isAction: false)  // alias
+            let line = try await reply
+            #expect(line.contains("User history is disabled on this server."))
+        }
+    }
 }

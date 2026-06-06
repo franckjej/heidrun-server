@@ -127,4 +127,17 @@ struct ServerConfigurationFileTests {
         #expect(resolved.bootstrapAdmin?.login == "admin")
         #expect(resolved.bootstrapAdmin?.password == "admin")
     }
+
+    @Test("user history defaults on; env and file can disable it")
+    func userHistoryToggle() {
+        // Default: on.
+        #expect(ServerConfigurationFile().resolved(environment: [:]).userHistoryEnabled == true)
+        // Env disables (accepts 0/false/no/off).
+        #expect(ServerConfigurationFile().resolved(environment: ["HEIDRUN_USER_HISTORY": "0"]).userHistoryEnabled == false)
+        #expect(ServerConfigurationFile().resolved(environment: ["HEIDRUN_USER_HISTORY": "false"]).userHistoryEnabled == false)
+        // File disables; env (anything truthy) overrides the file back on.
+        let file = ServerConfigurationFile(userHistoryEnabled: false)
+        #expect(file.resolved(environment: [:]).userHistoryEnabled == false)
+        #expect(file.resolved(environment: ["HEIDRUN_USER_HISTORY": "1"]).userHistoryEnabled == true)
+    }
 }
