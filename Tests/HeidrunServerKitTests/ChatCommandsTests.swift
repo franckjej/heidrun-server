@@ -1070,13 +1070,16 @@ struct ChatCommandsTests {
                 async let reply = Self.awaitChat(admin) { $0.contains("User history") }
                 try await admin.sendChat("/usershistory", in: nil, isAction: false)
                 block = try await reply
-                if block.contains("Bob left") { break }
+                if block.contains(") left") { break }
                 try await Task.sleep(for: .milliseconds(50))
             }
 
+            // Lines carry the socket ID so two same-named logins are
+            // distinguishable: "  HH:mm:ss  Bob (N) entered".
             #expect(block.contains("User history (last 1h):"))
-            #expect(block.contains("Bob entered"))
-            #expect(block.contains("Bob left"))
+            #expect(block.contains("Bob ("))
+            #expect(block.contains(") entered"))
+            #expect(block.contains(") left"))
         }
     }
 

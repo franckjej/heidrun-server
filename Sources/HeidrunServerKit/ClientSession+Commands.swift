@@ -323,7 +323,7 @@ extension ClientSession {
         for event in events {
             let when = Self.formatHistoryTime(event.timestamp)
             let verb = event.kind == .entered ? "entered" : "left"
-            lines.append("  \(when)  \(event.nickname) \(verb)")
+            lines.append("  \(when)  \(event.nickname) (\(event.socket)) \(verb)")
         }
         await sendSystemReply(lines: lines)
     }
