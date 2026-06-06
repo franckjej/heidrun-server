@@ -393,6 +393,15 @@ public actor HeidrunServer {
 
     public func stop() async {
         serverLogger.info("HeidrunServer stopping")
+        // Drain user-history departures: record a `.left` for everyone
+        // still connected so a restart / redeploy doesn't strand their
+        // `entered` events without a matching leave. Done first, while the
+        // roster is still intact and before the channels close.
+        // `recordDepartureOnce()` keeps this from double-logging against
+        // each session's own disconnect cleanup as the sockets drop.
+        for (_, session) in await registry.liveSessions() {
+            await session.recordDepartureOnce()
+        }
         idleAwaySupervisor?.cancel()
         idleAwaySupervisor = nil
         if let trackerAnnouncer {

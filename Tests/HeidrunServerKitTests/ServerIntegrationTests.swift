@@ -226,4 +226,31 @@ struct ServerIntegrationTests {
             #expect(leftSocket != 0)
         }
     }
+
+    @Test("server stop records exactly one departure for everyone still connected")
+    func shutdownDrainsHistory() async throws {
+        // Persistent DB so the history survives the server going down and
+        // can be read back through a fresh store on the same file.
+        let dbPath = NSTemporaryDirectory() + "heidrun-shutdown-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: dbPath) }
+
+        let server = HeidrunServer(
+            configuration: ServerConfiguration(port: 0, accountStorePath: dbPath)
+        )
+        let port = try await server.start()
+        let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Ghost")
+        try await Task.sleep(for: .milliseconds(150))   // let login + entered land
+
+        // Hard stop while Ghost is still connected — the shutdown drain
+        // should record its leave even though no graceful client
+        // disconnect happened.
+        await server.stop()
+        await client.disconnect()
+
+        let store = try UserEventStore(path: dbPath)
+        let events = await store.events(withinHours: 1)
+        let ghostLeaves = events.filter { $0.nickname == "Ghost" && $0.kind == .left }
+        #expect(events.contains { $0.nickname == "Ghost" && $0.kind == .entered })
+        #expect(ghostLeaves.count == 1)   // recorded once, not doubled
+    }
 }

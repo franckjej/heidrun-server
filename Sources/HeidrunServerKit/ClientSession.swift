@@ -46,6 +46,10 @@ public actor ClientSession {
     /// Wall-clock timestamp of the successful login. `nil` while still
     /// in handshake / pre-auth.
     var loginAt: Date?
+    /// Set once this session's `.left` history event has been recorded,
+    /// so the normal disconnect cleanup and the server's shutdown drain
+    /// can both call `recordDepartureOnce()` without double-logging.
+    private var didRecordDeparture = false
     /// Last time we processed an inbound packet from this session. The
     /// idle-away supervisor reads this to decide when to flip the
     /// `.away` flag on the broadcast user record.
@@ -168,6 +172,18 @@ public actor ClientSession {
     /// kick handler to disconnect a target by socketID.
     public func disconnectNow() async {
         await closer()
+    }
+
+    /// Record this session's `.left` history event exactly once. Called
+    /// from the normal disconnect cleanup AND the server's shutdown
+    /// drain (`HeidrunServer.stop()`); the `didRecordDeparture` guard
+    /// makes the second caller a no-op so a session never logs two
+    /// leaves. No-op before login (`socketID == 0`) or when history is
+    /// disabled (`userEvents == nil`).
+    func recordDepartureOnce() async {
+        guard !didRecordDeparture, socketID != 0 else { return }
+        didRecordDeparture = true
+        await userEvents?.record(.left, nickname: nickname, socket: socketID)
     }
 
     /// `true` when the authenticated account has every bit in `required`
@@ -369,7 +385,7 @@ public actor ClientSession {
                 }
             }
             await registry.unregister(socketID: leftSocket)
-            await userEvents?.record(.left, nickname: nickname, socket: leftSocket)
+            await recordDepartureOnce()
             await registry.broadcast(PacketEncoder.userLeftPush(socketID: leftSocket))
             serverLogger.info("user disconnected", metadata: [
                 "socketID": "\(leftSocket)",
