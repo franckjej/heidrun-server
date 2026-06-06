@@ -1117,4 +1117,32 @@ struct ChatCommandsTests {
             #expect(line.contains("User history is disabled on this server."))
         }
     }
+
+    @Test("a user without sendChat cannot issue chat commands (strict gate)")
+    func noSendChatBlocksCommands() async throws {
+        // Seed a read-only account: it can receive chat but lacks
+        // sendChat, so the strict gate must reject its whole chat input —
+        // including slash commands — before any command runs.
+        let dbPath = NSTemporaryDirectory() + "heidrun-mute-\(UUID().uuidString).sqlite"
+        defer { try? FileManager.default.removeItem(atPath: dbPath) }
+        let mutedPermissions = UserPrivileges.readChat.rawValue | UserPrivileges.readNews.rawValue
+        do {
+            let store = try AccountStore(path: dbPath, passwordRounds: 1)
+            _ = try await store.create(
+                login: "muted", password: "pw", nickname: "Muted",
+                iconID: 0, permissions: mutedPermissions)
+        }
+        let configuration = ServerConfiguration(
+            port: 0, accountStorePath: dbPath, passwordRounds: 1)
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let muted = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Muted", loginName: "muted", password: "pw")
+            try await Task.sleep(for: .milliseconds(100))
+            // `/who` normally replies with a roster dump; the strict gate
+            // rejects the chat input first, so nothing comes back.
+            async let silent: Void = Self.expectNoChat(muted) { $0.contains("Connected users") }
+            try await muted.sendChat("/who", in: nil, isAction: false)
+            await silent
+        }
+    }
 }

@@ -860,6 +860,13 @@ public actor ClientSession {
     }
 
     private func handleChat(header: PacketHeader, fields: [PacketField]) async {
+        // Strict: no sendChat → no chat AND no chat commands. Gated
+        // before the slash-command dispatch, so a chat-restricted user
+        // can't issue /me, /who, /broadcast, etc. either.
+        guard hasPrivilege(.sendChat) else {
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 105, privilege: "sendChat")
+            return
+        }
         guard let body = fields.string(.message, encoding: stringEncoding) else {
             try? await writer(PacketEncoder.emptyReply(
                 taskNumber: header.taskNumber,
@@ -876,14 +883,6 @@ public actor ClientSession {
                 taskNumber: header.taskNumber,
                 transactionID: 105
             ))
-            return
-        }
-        // Broadcasting an actual chat line requires sendChat. The
-        // slash-commands handled above are exempt (each carries its own
-        // gate), so a chat-restricted user can still run /who, /version,
-        // etc.
-        guard hasPrivilege(.sendChat) else {
-            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 105, privilege: "sendChat")
             return
         }
         let isAction = (fields.uint16(.parameter) ?? 0) != 0

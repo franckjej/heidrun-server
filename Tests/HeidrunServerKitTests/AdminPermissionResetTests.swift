@@ -16,6 +16,10 @@ struct AdminPermissionResetTests {
         | AccountPrivilege.readAccounts.rawValue
         | AccountPrivilege.modifyAccounts.rawValue
         | AccountPrivilege.disconnectUsers.rawValue
+        // sendChat so this legacy admin can still issue chat commands
+        // under the strict sendChat gate — the test's signal is the
+        // absence of `.canBroadcast`, not of chat.
+        | UserPrivileges.sendChat.rawValue
 
     /// Pre-populate `dbPath` with an admin row at the legacy 5-bit
     /// permission level so `HeidrunServer.start` sees a populated table
