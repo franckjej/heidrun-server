@@ -276,11 +276,15 @@ struct FileWriteTests {
     func guestCannotCreateFolder() async throws {
         try await withSeededFilesServer { _, port, rootURL in
             let guest = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Guest")
-            // createFolder is fire-and-forget client-side; the server
-            // rejects it. The reply-bearing listFiles on the same
-            // connection is an ordering barrier — by the time it returns,
-            // the rejected createFolder has been processed.
-            try await guest.createFolder(at: RemotePath(components: []), name: "Sneaky")
+            // The server rejects it; the client surfaces that as a thrown
+            // serverError (rc17 — file ops await the reply).
+            var denied = false
+            do {
+                try await guest.createFolder(at: RemotePath(components: []), name: "Sneaky")
+            } catch let error as HotlineError {
+                if case .serverError = error { denied = true }
+            }
+            #expect(denied)
             let entries = try await guest.listFiles(at: RemotePath(components: []))
             #expect(!entries.contains(where: { $0.name == "Sneaky" }))
             #expect(!FileManager.default.fileExists(
@@ -293,8 +297,13 @@ struct FileWriteTests {
         try await withSeededFilesServer { _, port, rootURL in
             try Data("keep".utf8).write(to: rootURL.appendingPathComponent("protected.txt"))
             let guest = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Guest")
-            try await guest.deleteEntry(at: RemotePath(components: []), name: "protected.txt")
-            _ = try await guest.listFiles(at: RemotePath(components: []))  // barrier
+            var denied = false
+            do {
+                try await guest.deleteEntry(at: RemotePath(components: []), name: "protected.txt")
+            } catch let error as HotlineError {
+                if case .serverError = error { denied = true }
+            }
+            #expect(denied)
             #expect(FileManager.default.fileExists(
                 atPath: rootURL.appendingPathComponent("protected.txt").path))
         }
