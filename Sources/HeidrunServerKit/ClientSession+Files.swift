@@ -6,6 +6,10 @@ extension ClientSession {
     /// with one `fileListEntry` per child. Errors with errorID=1 when
     /// the path doesn't exist or isn't a directory.
     func handleListFiles(header: PacketHeader, fields: [PacketField]) async {
+        guard hasPrivilege(.downloadFiles) || hasPrivilege(.downloadFolders) else {
+            await denyFileOp(taskNumber: header.taskNumber, transactionID: 200, privilege: "downloadFiles")
+            return
+        }
         let path = filePath(from: fields)
         guard let entries = await files.list(at: path) else {
             try? await writer(PacketEncoder.errorReply(
@@ -45,6 +49,10 @@ extension ClientSession {
                 message: "missing fileName field",
                 encoding: stringEncoding
             ))
+            return
+        }
+        guard hasPrivilege(.downloadFiles) else {
+            await denyFileOp(taskNumber: header.taskNumber, transactionID: 202, privilege: "downloadFiles")
             return
         }
         guard let bytes = await files.bytes(at: path, name: name) else {
@@ -111,6 +119,10 @@ extension ClientSession {
             ))
             return
         }
+        guard hasPrivilege(.downloadFiles) || hasPrivilege(.downloadFolders) else {
+            await denyFileOp(taskNumber: header.taskNumber, transactionID: 206, privilege: "downloadFiles")
+            return
+        }
         guard let info = await files.info(at: path, name: name) else {
             try? await writer(PacketEncoder.errorReply(
                 taskNumber: header.taskNumber,
@@ -138,6 +150,10 @@ extension ClientSession {
                 taskNumber: header.taskNumber,
                 transactionID: 210
             ))
+            return
+        }
+        guard hasPrivilege(.downloadFolders) else {
+            await denyFileOp(taskNumber: header.taskNumber, transactionID: 210, privilege: "downloadFolders")
             return
         }
         guard let items = await files.enumerate(at: path, name: name) else {
