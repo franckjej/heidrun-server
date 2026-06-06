@@ -3,6 +3,15 @@ import HeidrunCore
 
 /// Builders for every packet `HeidrunServer` emits in Milestone 2.
 /// Each function returns the raw bytes ready to write to the wire.
+///
+/// **Reply convention:** every reply carries `classID: 1` and
+/// `transactionID: 0`. Vanilla Hotline zeroes the reply's type and
+/// correlates purely by `taskNumber`; echoing the request's type back
+/// (e.g. `0x0001_006b` for a login reply) is non-spec and trips strict
+/// third-party clients that dispatch on the header type — gtkhx had to
+/// mask it off. Our own clients match by `taskNumber` either way, which
+/// is why this went unnoticed. Pushes (`classID: 0`) keep their type:
+/// that's how the client routes them.
 enum PacketEncoder {
     /// Server's reply to a login (transID 107). Carries the advertised
     /// protocol version, the assigned socket ID, and the server's
@@ -27,7 +36,7 @@ enum PacketEncoder {
         }
         return PacketCodec.encode(
             classID: 1,
-            transactionID: 107,
+            transactionID: 0, // login reply (was 107)
             taskNumber: taskNumber,
             fields: fields
         )
@@ -36,10 +45,14 @@ enum PacketEncoder {
     /// Empty reply to acknowledge a transaction without payload — used
     /// for the chat-send ack (105 reply) and similar fire-and-forget
     /// transactions that the client still tracks by taskNumber.
+    ///
+    /// `transactionID` records which request this answers for call-site
+    /// readability; it does **not** reach the wire — the reply type is
+    /// always 0 (see the type-level note).
     static func emptyReply(taskNumber: UInt32, transactionID: UInt16) -> Data {
         PacketCodec.encode(
             classID: 1,
-            transactionID: transactionID,
+            transactionID: 0,
             taskNumber: taskNumber,
             fields: []
         )
@@ -67,7 +80,7 @@ enum PacketEncoder {
         }
         return PacketCodec.encode(
             classID: 1,
-            transactionID: 300,
+            transactionID: 0, // getUserList reply (was 300)
             taskNumber: taskNumber,
             fields: fields
         )
@@ -151,7 +164,7 @@ enum PacketEncoder {
     ) -> Data {
         PacketCodec.encode(
             classID: 1,
-            transactionID: 101,
+            transactionID: 0, // getNewsList reply (was 101)
             taskNumber: taskNumber,
             fields: [PacketField.string(.message, feed, encoding: encoding)]
         )
@@ -311,7 +324,7 @@ enum PacketEncoder {
         }
         return PacketCodec.encode(
             classID: 1,
-            transactionID: 303,
+            transactionID: 0, // getClientInfoText reply (was 303)
             taskNumber: taskNumber,
             fields: fields
         )
@@ -331,6 +344,10 @@ enum PacketEncoder {
     /// (e.g. surface a "Replace / Resume / Cancel" alert specifically
     /// for `.fileAlreadyExists`). Older clients ignore the unknown
     /// field and fall back on the `.errorMessage` text.
+    ///
+    /// `transactionID` records which request failed for call-site
+    /// readability; it does **not** reach the wire — the reply type is
+    /// always 0 (see the type-level note).
     static func errorReply(
         taskNumber: UInt32,
         transactionID: UInt16,
@@ -347,7 +364,7 @@ enum PacketEncoder {
         }
         return PacketCodec.encode(
             classID: 1,
-            transactionID: transactionID,
+            transactionID: 0,
             taskNumber: taskNumber,
             errorID: 1,
             fields: fields
@@ -387,7 +404,7 @@ enum PacketEncoder {
         }
         return PacketCodec.encode(
             classID: 1,
-            transactionID: 352,
+            transactionID: 0, // openLogin reply (was 352)
             taskNumber: taskNumber,
             fields: [
                 PacketField.string(.nickname, account.nickname, encoding: encoding),
@@ -415,7 +432,7 @@ enum PacketEncoder {
         }
         return PacketCodec.encode(
             classID: 1,
-            transactionID: 370,
+            transactionID: 0, // getThreadedNewsBundles reply (was 370)
             taskNumber: taskNumber,
             fields: fields
         )
@@ -442,7 +459,7 @@ enum PacketEncoder {
         }
         return PacketCodec.encode(
             classID: 1,
-            transactionID: 371,
+            transactionID: 0, // getThreadedNewsCategoryContents reply (was 371)
             taskNumber: taskNumber,
             fields: [NewsThreadListCodec.encode(entries, encoding: encoding)]
         )
@@ -457,7 +474,7 @@ enum PacketEncoder {
     ) -> Data {
         PacketCodec.encode(
             classID: 1,
-            transactionID: 400,
+            transactionID: 0, // getNewsThreadBody reply (was 400)
             taskNumber: taskNumber,
             fields: [
                 PacketField.string(.newsTitle, post.title, encoding: encoding),
@@ -489,7 +506,7 @@ enum PacketEncoder {
         }
         return PacketCodec.encode(
             classID: 1,
-            transactionID: 200,
+            transactionID: 0, // getFileList reply (was 200)
             taskNumber: taskNumber,
             fields: fields
         )
@@ -503,7 +520,7 @@ enum PacketEncoder {
     ) -> Data {
         PacketCodec.encode(
             classID: 1,
-            transactionID: 203,
+            transactionID: 0, // uploadFile reply (was 203)
             taskNumber: taskNumber,
             fields: [PacketField.uint32(.transferID, transferID)]
         )
@@ -518,7 +535,7 @@ enum PacketEncoder {
     ) -> Data {
         PacketCodec.encode(
             classID: 1,
-            transactionID: 202,
+            transactionID: 0, // downloadFile reply (was 202)
             taskNumber: taskNumber,
             fields: [
                 PacketField.uint32(.transferID, transferID),
@@ -539,7 +556,7 @@ enum PacketEncoder {
     ) -> Data {
         PacketCodec.encode(
             classID: 1,
-            transactionID: 212,
+            transactionID: 0, // downloadBanner reply (was 212)
             taskNumber: taskNumber,
             fields: [
                 PacketField.uint32(.transferID, transferID),
@@ -570,7 +587,7 @@ enum PacketEncoder {
         }
         return PacketCodec.encode(
             classID: 1,
-            transactionID: 206,
+            transactionID: 0, // getFileInfo reply (was 206)
             taskNumber: taskNumber,
             fields: out
         )
