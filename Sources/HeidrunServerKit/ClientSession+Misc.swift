@@ -53,6 +53,10 @@ extension ClientSession {
     /// Handle `deleteNewsBundle` (380): drop the addressed folder or
     /// category. No-reply per the legacy client.
     func handleDeleteNewsBundle(header: PacketHeader, fields: [PacketField]) async {
+        guard hasPrivilege(.deleteNewsBundles) else {
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 380, privilege: "deleteNewsBundles")
+            return
+        }
         let path = newsPathComponents(from: fields)
         guard !path.isEmpty else { return }
         _ = await news.removeBundle(at: path)
@@ -62,6 +66,10 @@ extension ClientSession {
     /// category. `deleteAll` (337) cascade is not modeled yet — the
     /// single-thread delete covers the common case. No-reply.
     func handleDeleteNewsThread(header: PacketHeader, fields: [PacketField]) async {
+        guard hasPrivilege(.deleteArticles) else {
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 411, privilege: "deleteArticles")
+            return
+        }
         let path = newsPathComponents(from: fields)
         let articleID = Int(fields.uint16(.newsArticleID) ?? 0)
         guard !path.isEmpty, articleID > 0 else { return }

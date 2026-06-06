@@ -4,6 +4,10 @@ import HeidrunCore
 extension ClientSession {
     /// Reply to `getNewsList` (101) with the joined plain-news feed.
     func handleFetchPlainNews(header: PacketHeader) async {
+        guard hasPrivilege(.readNews) else {
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 101, privilege: "readNews")
+            return
+        }
         let feed = await news.plainFeed()
         try? await writer(PacketEncoder.plainNewsReply(
             taskNumber: header.taskNumber,
@@ -17,6 +21,10 @@ extension ClientSession {
     /// every connected client (including the poster — Hotline clients
     /// expect to see their own post echoed).
     func handlePostPlainNews(header: PacketHeader, fields: [PacketField]) async {
+        guard hasPrivilege(.postNews) else {
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 103, privilege: "postNews")
+            return
+        }
         guard let body = fields.string(.message, encoding: stringEncoding) else {
             try? await writer(PacketEncoder.emptyReply(
                 taskNumber: header.taskNumber,

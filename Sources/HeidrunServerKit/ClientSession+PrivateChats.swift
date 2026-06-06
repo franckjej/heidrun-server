@@ -7,6 +7,10 @@ extension ClientSession {
     /// so the creator can join their own room, and push an invitation
     /// (113) to the addressed target (if any).
     func handleCreatePrivateChat(header: PacketHeader, fields: [PacketField]) async {
+        guard hasPrivilege(.initiatePrivateChat) else {
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 112, privilege: "initiatePrivateChat")
+            return
+        }
         let target = fields.uint16(.socket) ?? 0
         let chatID = await privateChats.create(creator: socketID)
         let chatRefData = ChatID(rawValue: chatID).data

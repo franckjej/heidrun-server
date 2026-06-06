@@ -8,6 +8,10 @@ extension ClientSession {
     /// with `errorID == 0` on delivery or `errorID == 1` if the target
     /// isn't connected.
     func handlePrivateMessage(header: PacketHeader, fields: [PacketField]) async {
+        guard hasPrivilege(.sendMessages) else {
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 108, privilege: "sendMessages")
+            return
+        }
         let target = fields.uint16(.socket) ?? 0
         guard let body = fields.string(.message, encoding: stringEncoding), target != 0 else {
             try? await writer(PacketEncoder.errorReply(

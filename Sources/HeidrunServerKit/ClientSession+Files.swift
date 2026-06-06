@@ -7,7 +7,7 @@ extension ClientSession {
     /// the path doesn't exist or isn't a directory.
     func handleListFiles(header: PacketHeader, fields: [PacketField]) async {
         guard hasPrivilege(.downloadFiles) || hasPrivilege(.downloadFolders) else {
-            await denyFileOp(taskNumber: header.taskNumber, transactionID: 200, privilege: "downloadFiles")
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 200, privilege: "downloadFiles")
             return
         }
         let path = filePath(from: fields)
@@ -52,7 +52,7 @@ extension ClientSession {
             return
         }
         guard hasPrivilege(.downloadFiles) else {
-            await denyFileOp(taskNumber: header.taskNumber, transactionID: 202, privilege: "downloadFiles")
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 202, privilege: "downloadFiles")
             return
         }
         guard let bytes = await files.bytes(at: path, name: name) else {
@@ -120,7 +120,7 @@ extension ClientSession {
             return
         }
         guard hasPrivilege(.downloadFiles) || hasPrivilege(.downloadFolders) else {
-            await denyFileOp(taskNumber: header.taskNumber, transactionID: 206, privilege: "downloadFiles")
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 206, privilege: "downloadFiles")
             return
         }
         guard let info = await files.info(at: path, name: name) else {
@@ -153,7 +153,7 @@ extension ClientSession {
             return
         }
         guard hasPrivilege(.downloadFolders) else {
-            await denyFileOp(taskNumber: header.taskNumber, transactionID: 210, privilege: "downloadFolders")
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 210, privilege: "downloadFolders")
             return
         }
         guard let items = await files.enumerate(at: path, name: name) else {
@@ -199,7 +199,7 @@ extension ClientSession {
             return
         }
         guard hasPrivilege(.uploadFolders) else {
-            await denyFileOp(taskNumber: header.taskNumber, transactionID: 213, privilege: "uploadFolders")
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 213, privilege: "uploadFolders")
             return
         }
         let itemCount = fields.uint16(.folderItemCount) ?? 0
@@ -242,7 +242,7 @@ extension ClientSession {
             return
         }
         guard hasPrivilege(.uploadFiles) else {
-            await denyFileOp(taskNumber: header.taskNumber, transactionID: 203, privilege: "uploadFiles")
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 203, privilege: "uploadFiles")
             return
         }
         let declaredSize = fields.uint32(.transferSize) ?? 0
@@ -297,7 +297,7 @@ extension ClientSession {
         }
         let isFolder = await files.isFolder(at: path, name: name) == true
         guard hasPrivilege(isFolder ? .deleteFolders : .deleteFiles) else {
-            await denyFileOp(taskNumber: header.taskNumber, transactionID: 204,
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 204,
                              privilege: isFolder ? "deleteFolders" : "deleteFiles")
             return
         }
@@ -326,7 +326,7 @@ extension ClientSession {
             return
         }
         guard hasPrivilege(.createFolders) else {
-            await denyFileOp(taskNumber: header.taskNumber, transactionID: 205, privilege: "createFolders")
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 205, privilege: "createFolders")
             return
         }
         let ok = await files.createFolder(at: path, name: name)
@@ -360,7 +360,7 @@ extension ClientSession {
         var currentName = name
         if let newName = fields.string(.fileRename, encoding: stringEncoding), !newName.isEmpty {
             guard hasPrivilege(isFolder ? .renameFolders : .renameFiles) else {
-                await denyFileOp(taskNumber: header.taskNumber, transactionID: 207,
+                await denyPrivilege(taskNumber: header.taskNumber, transactionID: 207,
                                  privilege: isFolder ? "renameFolders" : "renameFiles")
                 return
             }
@@ -376,7 +376,7 @@ extension ClientSession {
         }
         if let comment = fields.string(.fileComment, encoding: stringEncoding) {
             guard hasPrivilege(isFolder ? .commentFolders : .commentFiles) else {
-                await denyFileOp(taskNumber: header.taskNumber, transactionID: 207,
+                await denyPrivilege(taskNumber: header.taskNumber, transactionID: 207,
                                  privilege: isFolder ? "commentFolders" : "commentFiles")
                 return
             }
@@ -409,7 +409,7 @@ extension ClientSession {
         }
         let isFolder = await files.isFolder(at: sourcePath, name: name) == true
         guard hasPrivilege(isFolder ? .moveFolders : .moveFiles) else {
-            await denyFileOp(taskNumber: header.taskNumber, transactionID: 208,
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 208,
                              privilege: isFolder ? "moveFolders" : "moveFiles")
             return
         }
@@ -441,7 +441,7 @@ extension ClientSession {
             return
         }
         guard hasPrivilege(.makeAliases) else {
-            await denyFileOp(taskNumber: header.taskNumber, transactionID: 209, privilege: "makeAliases")
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 209, privilege: "makeAliases")
             return
         }
         let ok = await files.makeAlias(from: sourcePath, name: name, to: destinationPath)
@@ -456,18 +456,6 @@ extension ClientSession {
                 transactionID: 209
             ))
         }
-    }
-
-    /// Reject a file operation the caller lacks the privilege for with a
-    /// human-readable error reply. Centralised so every gate reads the
-    /// same and clients surface a clear "Permission denied" message.
-    fileprivate func denyFileOp(taskNumber: UInt32, transactionID: UInt16, privilege: String) async {
-        try? await writer(PacketEncoder.errorReply(
-            taskNumber: taskNumber,
-            transactionID: transactionID,
-            message: "Permission denied: requires the \(privilege) privilege.",
-            encoding: stringEncoding
-        ))
     }
 
     fileprivate func destinationFilePath(from fields: [PacketField]) -> [String] {

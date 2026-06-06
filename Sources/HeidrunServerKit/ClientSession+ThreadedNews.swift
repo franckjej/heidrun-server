@@ -5,6 +5,10 @@ extension ClientSession {
     /// Handle `getThreadedNewsBundles` (370): walk to the requested
     /// path and reply with one `newsBundleEntry` per child node.
     func handleGetNewsBundles(header: PacketHeader, fields: [PacketField]) async {
+        guard hasPrivilege(.readNews) else {
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 370, privilege: "readNews")
+            return
+        }
         let path = newsPath(from: fields)
         guard let nodes = await news.children(at: path) else {
             try? await writer(PacketEncoder.errorReply(
@@ -23,6 +27,10 @@ extension ClientSession {
     /// Handle `getThreadedNewsCategoryContents` (371): walk to the
     /// requested category and reply with a single thread-list blob.
     func handleGetNewsCategory(header: PacketHeader, fields: [PacketField]) async {
+        guard hasPrivilege(.readNews) else {
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 371, privilege: "readNews")
+            return
+        }
         let path = newsPath(from: fields)
         guard let posts = await news.posts(at: path) else {
             try? await writer(PacketEncoder.errorReply(
@@ -41,6 +49,10 @@ extension ClientSession {
     /// Handle `getNewsThreadBody` (400): look up the article at
     /// `(path, articleID)` and reply with its full body.
     func handleGetNewsThread(header: PacketHeader, fields: [PacketField]) async {
+        guard hasPrivilege(.readNews) else {
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 400, privilege: "readNews")
+            return
+        }
         let path = newsPath(from: fields)
         let articleID = Int(fields.uint16(.newsArticleID) ?? 0)
         guard articleID > 0,
@@ -65,6 +77,10 @@ extension ClientSession {
     /// servers don't broadcast a notification — the client polls
     /// fetchNewsThreads — so this handler is reply-only.
     func handlePostNewsThread(header: PacketHeader, fields: [PacketField]) async {
+        guard hasPrivilege(.postNews) else {
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 410, privilege: "postNews")
+            return
+        }
         let path = newsPath(from: fields)
         // Per the Hotline 1.5 spec field 326 (newsArticleID) carries
         // the PARENT article's ID on a postNewsThread (410). `0`
@@ -93,6 +109,10 @@ extension ClientSession {
     /// Handle `createNewsBundle` (381): create a folder named `fileName`
     /// under the addressed `newsPath`. No-reply per HEClient.m.
     func handleCreateNewsBundle(header: PacketHeader, fields: [PacketField]) async {
+        guard hasPrivilege(.createNewsBundles) else {
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 381, privilege: "createNewsBundles")
+            return
+        }
         await createNewsContainer(
             header: header,
             fields: fields,
@@ -104,6 +124,10 @@ extension ClientSession {
     /// Handle `createNewsCategory` (382): create a category named
     /// `newsCategoryName` under the addressed `newsPath`. No-reply.
     func handleCreateNewsCategory(header: PacketHeader, fields: [PacketField]) async {
+        guard hasPrivilege(.createCategories) else {
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 382, privilege: "createCategories")
+            return
+        }
         await createNewsContainer(
             header: header,
             fields: fields,

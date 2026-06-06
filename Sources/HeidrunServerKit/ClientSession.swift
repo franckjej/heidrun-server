@@ -194,6 +194,19 @@ public actor ClientSession {
         return (account.permissions & required.rawValue) == required.rawValue
     }
 
+    /// Reject a transaction the caller lacks the privilege for with a
+    /// human-readable error reply (errorID=1 + message). Centralised so
+    /// every privilege gate across the handlers reads the same and
+    /// clients surface a clear "Permission denied" message.
+    func denyPrivilege(taskNumber: UInt32, transactionID: UInt16, privilege: String) async {
+        try? await writer(PacketEncoder.errorReply(
+            taskNumber: taskNumber,
+            transactionID: transactionID,
+            message: "Permission denied: requires the \(privilege) privilege.",
+            encoding: stringEncoding
+        ))
+    }
+
     /// Send a single chat line to JUST this session — no broadcast.
     /// Used by `/command` replies so the rest of the room never sees
     /// server-private output. The `*** ` prefix visually distinguishes
@@ -863,6 +876,14 @@ public actor ClientSession {
                 taskNumber: header.taskNumber,
                 transactionID: 105
             ))
+            return
+        }
+        // Broadcasting an actual chat line requires sendChat. The
+        // slash-commands handled above are exempt (each carries its own
+        // gate), so a chat-restricted user can still run /who, /version,
+        // etc.
+        guard hasPrivilege(.sendChat) else {
+            await denyPrivilege(taskNumber: header.taskNumber, transactionID: 105, privilege: "sendChat")
             return
         }
         let isAction = (fields.uint16(.parameter) ?? 0) != 0

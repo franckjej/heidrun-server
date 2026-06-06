@@ -22,8 +22,17 @@ struct PlainNewsTests {
 
     @Test("postPlainNews appends a stamped line, broadcasts 102, and the next fetch returns it")
     func postBroadcastsAndPersists() async throws {
-        try await ServerTestHelpers.withRunningServer { _, port in
-            let alice = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Alice")
+        let configuration = ServerConfiguration(
+            port: 0,
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin", password: "admin", nickname: "Admin"
+            )
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            // Alice logs in on the admin account (so she has postNews) but
+            // keeps the "Alice" nickname the post line is stamped with.
+            let alice = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Alice", loginName: "admin", password: "admin")
             let bob = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Bob")
             try await Task.sleep(for: .milliseconds(200))
 
@@ -119,5 +128,22 @@ struct PlainNewsTests {
         let feed = await tree.plainFeed()
         #expect(feed.hasPrefix("From B ("))            // newest first
         #expect(feed.contains(NewsTree.plainNewsSeparator))
+    }
+
+    @Test("a guest cannot post plain news (lacks postNews)")
+    func guestCannotPostPlainNews() async throws {
+        try await ServerTestHelpers.withRunningServer { _, port in
+            let guest = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Guest")
+            var denied = false
+            do {
+                try await guest.postPlainNews("sneaky news")
+            } catch let error as HotlineError {
+                if case .serverError = error { denied = true }
+            }
+            #expect(denied)
+            // Guest can still read (has readNews) — confirm nothing landed.
+            let feed = try await guest.fetchNewsFeed()
+            #expect(!feed.contains("sneaky news"))
+        }
     }
 }

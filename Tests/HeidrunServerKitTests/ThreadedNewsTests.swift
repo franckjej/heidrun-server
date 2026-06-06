@@ -25,7 +25,10 @@ struct ThreadedNewsTests {
     private static let configuration = ServerConfiguration(
         port: 0,
         serverName: "Heidrun integration test",
-        newsSeed: seed
+        newsSeed: seed,
+        bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+            login: "admin", password: "admin", nickname: "Admin"
+        )
     )
 
     @Test("fetchNewsBundles at the root returns the seeded top-level folder")
@@ -63,7 +66,8 @@ struct ThreadedNewsTests {
     @Test("postNewsThread appends to the category and a subsequent fetch sees it")
     func postNewThread() async throws {
         try await ServerTestHelpers.withRunningServer(configuration: Self.configuration) { _, port in
-            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Alice")
+            let client = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin")
 
             try await client.postNewsThread(
                 at: RemotePath(components: ["General", "Announcements"]),
@@ -84,7 +88,8 @@ struct ThreadedNewsTests {
     @Test("postNewsThread with a non-zero parentThreadID round-trips on TX 371")
     func replyParentRoundTrip() async throws {
         try await ServerTestHelpers.withRunningServer(configuration: Self.configuration) { _, port in
-            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Alice")
+            let client = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin")
             let path = RemotePath(components: ["General", "Announcements"])
 
             // The seed lays down two top-level posts ("Welcome" /
