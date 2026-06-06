@@ -253,6 +253,17 @@ public actor FileVault {
         return Info(entry: entry, created: created, modified: modified, comment: stored?.comment ?? "")
     }
 
+    /// Whether `(path, name)` is an existing directory (`true`), a file
+    /// (`false`), or absent (`nil`). A cheap stat used by the privilege
+    /// gate to pick the file vs folder permission bit before a mutation.
+    public func isFolder(at path: [String], name: String) -> Bool? {
+        guard Self.isSafeComponent(name) else { return nil }
+        guard let parent = resolved(path: path) else { return nil }
+        let url = parent.appendingPathComponent(name, isDirectory: false)
+        guard fileManager.fileExists(atPath: url.path) else { return nil }
+        return isDirectory(url)
+    }
+
     // MARK: - Writes
 
     /// Delete a file or folder at `(path, name)`. Returns `true` on

@@ -19,6 +19,9 @@ struct FileWriteTests {
         let configuration = ServerConfiguration(
             port: 0,
             serverName: "Heidrun integration test",
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin", password: "admin", nickname: "Admin"
+            ),
             filesRootPath: rootURL.path
         )
         return try await ServerTestHelpers.withRunningServer(configuration: configuration) { server, port in
@@ -29,7 +32,8 @@ struct FileWriteTests {
     @Test("createFolder + listFiles round-trips a new folder")
     func createFolder() async throws {
         try await withSeededFilesServer { _, port, rootURL in
-            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
+            let client = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin")
             try await client.createFolder(at: RemotePath(components: []), name: "Photos")
             let entries = try await client.listFiles(at: RemotePath(components: []))
             #expect(entries.contains(where: { $0.name == "Photos" && $0.type == .folder }))
@@ -43,7 +47,8 @@ struct FileWriteTests {
     func deleteFile() async throws {
         try await withSeededFilesServer { _, port, rootURL in
             try Data("bye".utf8).write(to: rootURL.appendingPathComponent("disposable.txt"))
-            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
+            let client = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin")
             try await client.deleteEntry(at: RemotePath(components: []), name: "disposable.txt")
             let entries = try await client.listFiles(at: RemotePath(components: []))
             #expect(entries.isEmpty)
@@ -54,7 +59,8 @@ struct FileWriteTests {
     func renameFile() async throws {
         try await withSeededFilesServer { _, port, rootURL in
             try Data("hello".utf8).write(to: rootURL.appendingPathComponent("old.txt"))
-            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
+            let client = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin")
             try await client.updateFileMetadata(
                 at: RemotePath(components: []),
                 name: "old.txt",
@@ -74,7 +80,8 @@ struct FileWriteTests {
     func setComment() async throws {
         try await withSeededFilesServer { _, port, rootURL in
             try Data("noted".utf8).write(to: rootURL.appendingPathComponent("notes.txt"))
-            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
+            let client = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin")
             try await client.updateFileMetadata(
                 at: RemotePath(components: []),
                 name: "notes.txt",
@@ -99,7 +106,8 @@ struct FileWriteTests {
                 at: rootURL.appendingPathComponent("Inbox", isDirectory: true),
                 withIntermediateDirectories: true
             )
-            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
+            let client = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin")
             try await client.moveEntry(
                 from: RemotePath(components: []),
                 name: "movable.txt",
@@ -120,7 +128,8 @@ struct FileWriteTests {
             let existing = rootURL.appendingPathComponent("notes.txt")
             try original.write(to: existing)
 
-            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
+            let client = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin")
             let replacement = Data("REPLACEMENT — should never land".utf8)
 
             var caught: HotlineError?
@@ -150,7 +159,8 @@ struct FileWriteTests {
     @Test("startUpload + sendUpload commits the data fork to disk and download round-trips")
     func uploadFile() async throws {
         try await withSeededFilesServer { _, port, rootURL in
-            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
+            let client = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin")
             let payload = Data("uploaded payload bytes".utf8)
 
             let handle = try await client.startUpload(
@@ -191,7 +201,8 @@ struct FileWriteTests {
     @Test("sendUpload with a resource fork writes ._<name>.rsrc next to the data fork")
     func uploadFileWithResourceFork() async throws {
         try await withSeededFilesServer { _, port, rootURL in
-            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
+            let client = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin")
             let dataFork = Data("data fork bytes".utf8)
             let resourceFork = Data((0..<96).map { UInt8(($0 ^ 0xC3) & 0xFF) })
 
@@ -225,7 +236,8 @@ struct FileWriteTests {
     @Test("sendUpload with a multi-chunk data fork AND a resource fork commits both byte-identically")
     func uploadLargeFileWithResourceFork() async throws {
         try await withSeededFilesServer { _, port, rootURL in
-            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
+            let client = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin")
             let dataForkLength = 2 * 1024 * 1024 + 17
             let dataFork = Data((0..<dataForkLength).map { UInt8(($0 ^ 0xA7) & 0xFF) })
             let resourceForkLength = 64 * 1024 + 9
@@ -255,6 +267,51 @@ struct FileWriteTests {
             let sidecarURL = rootURL.appendingPathComponent("._DrayTekSyslog.bin.rsrc")
             #expect((try? Data(contentsOf: dataURL)) == dataFork)
             #expect((try? Data(contentsOf: sidecarURL)) == resourceFork)
+        }
+    }
+
+    // MARK: - Privilege enforcement
+
+    @Test("a guest cannot create a folder (lacks createFolders)")
+    func guestCannotCreateFolder() async throws {
+        try await withSeededFilesServer { _, port, rootURL in
+            let guest = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Guest")
+            // createFolder is fire-and-forget client-side; the server
+            // rejects it. The reply-bearing listFiles on the same
+            // connection is an ordering barrier — by the time it returns,
+            // the rejected createFolder has been processed.
+            try await guest.createFolder(at: RemotePath(components: []), name: "Sneaky")
+            let entries = try await guest.listFiles(at: RemotePath(components: []))
+            #expect(!entries.contains(where: { $0.name == "Sneaky" }))
+            #expect(!FileManager.default.fileExists(
+                atPath: rootURL.appendingPathComponent("Sneaky").path))
+        }
+    }
+
+    @Test("a guest cannot delete a file (lacks deleteFiles)")
+    func guestCannotDelete() async throws {
+        try await withSeededFilesServer { _, port, rootURL in
+            try Data("keep".utf8).write(to: rootURL.appendingPathComponent("protected.txt"))
+            let guest = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Guest")
+            try await guest.deleteEntry(at: RemotePath(components: []), name: "protected.txt")
+            _ = try await guest.listFiles(at: RemotePath(components: []))  // barrier
+            #expect(FileManager.default.fileExists(
+                atPath: rootURL.appendingPathComponent("protected.txt").path))
+        }
+    }
+
+    @Test("a guest is refused at startUpload (lacks uploadFiles)")
+    func guestCannotUpload() async throws {
+        try await withSeededFilesServer { _, port, _ in
+            let guest = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Guest")
+            var denied = false
+            do {
+                _ = try await guest.startUpload(
+                    at: RemotePath(components: []), name: "evil.txt", size: 4, resume: false)
+            } catch let error as HotlineError {
+                if case .serverError = error { denied = true }
+            }
+            #expect(denied)
         }
     }
 }

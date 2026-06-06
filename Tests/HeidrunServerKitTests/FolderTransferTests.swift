@@ -20,6 +20,9 @@ struct FolderTransferTests {
         let configuration = ServerConfiguration(
             port: 0,
             serverName: "Heidrun folder-transfer test",
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin", password: "admin", nickname: "Admin"
+            ),
             filesRootPath: rootURL.path
         )
         return try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
@@ -39,7 +42,8 @@ struct FolderTransferTests {
             try notesPayload.write(to: projectURL.appendingPathComponent("notes.txt"))
             try innerPayload.write(to: subURL.appendingPathComponent("inner.txt"))
 
-            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
+            let client = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin")
             let networkClient = try #require(client as? HotlineNetworkClient)
             let handle = try await networkClient.startFolderDownload(
                 at: RemotePath(components: []),
@@ -74,7 +78,8 @@ struct FolderTransferTests {
             try dataFork.write(to: projectURL.appendingPathComponent("binary.bin"))
             try resourceFork.write(to: projectURL.appendingPathComponent("._binary.bin.rsrc"))
 
-            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
+            let client = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin")
             let networkClient = try #require(client as? HotlineNetworkClient)
             let handle = try await networkClient.startFolderDownload(
                 at: RemotePath(components: []),
@@ -95,7 +100,8 @@ struct FolderTransferTests {
     @Test("folder upload writes the per-item resource forks to ._<name>.rsrc sidecars")
     func uploadResourceForkRoundTrip() async throws {
         try await withSeededFilesServer { port, rootURL in
-            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
+            let client = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin")
             let networkClient = try #require(client as? HotlineNetworkClient)
 
             let dataFork = Data("alpha data".utf8)
@@ -131,7 +137,8 @@ struct FolderTransferTests {
     @Test("upload a folder writes every item into the vault under the new root")
     func uploadRoundTrip() async throws {
         try await withSeededFilesServer { port, rootURL in
-            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
+            let client = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin")
             let networkClient = try #require(client as? HotlineNetworkClient)
 
             let alpha = Data("alpha contents".utf8)
