@@ -179,13 +179,41 @@ services:
       # skip the agreement push entirely.
       # HEIDRUN_AGREEMENT: "Welcome to the server. Be kind."
 
-      # User join/leave history (the admin `/usershistory` chat command).
-      # On by default. Set to "0" (or false/no/off) to disable recording
-      # entirely — a privacy kill-switch for operators who don't want to
-      # log who comes and goes. History persists only when HEIDRUN_DB_PATH
-      # points at a persistent file; otherwise it's in-memory and wipes
-      # on restart, like accounts.
+      # DEPRECATED alias of HEIDRUN_AUDIT_LOG_ENABLED (see Audit log
+      # below) — still honoured for old deployments. Drives the audit
+      # master switch when HEIDRUN_AUDIT_LOG_ENABLED is unset. Set to "0"
+      # (or false/no/off) to disable recording entirely.
       # HEIDRUN_USER_HISTORY: "0"
+
+      # ---------------------------------------------------------------
+      # AUDIT LOG
+      # ---------------------------------------------------------------
+      #
+      # Records presence (join/leave), file transfers, logins, and admin
+      # actions to a SEPARATE SQLite file so it can be rotated or erased
+      # independently of accounts. Read back with the admin /audit chat
+      # command (aliases /transfers, /authlog, /adminlog; /usershistory
+      # shows presence). First run auto-creates the DB + schema.
+
+      # Master switch. On by default. Set to "0" (false/no/off) to
+      # disable all audit recording — a privacy kill-switch. Replaces
+      # HEIDRUN_USER_HISTORY (still honoured as an alias).
+      # HEIDRUN_AUDIT_LOG_ENABLED: "0"
+
+      # Audit DB file. Leave unset to derive `<db_path>.audit.sqlite`
+      # automatically — so by default it lands in the heidrun-data volume
+      # next to the accounts DB and persists across `down`/`up` with no
+      # extra volume. Set a path to override; in-memory (wipes on restart)
+      # only when HEIDRUN_DB_PATH is also unset.
+      # HEIDRUN_AUDIT_DB_PATH: "/var/lib/heidrun/heidrun.audit.sqlite"
+
+      # Days of audit history to keep (prune-on-write). Default 90.
+      # HEIDRUN_AUDIT_RETENTION_DAYS: "90"
+
+      # Store each client's raw IP in audit rows. OFF by default — raw
+      # IPs are personal data under the GDPR; enable only with a lawful
+      # basis. Retention above bounds how long they persist.
+      # HEIDRUN_LOG_IP_ADDRESSES: "1"
 
       # ---------------------------------------------------------------
       # TRACKER REGISTRATION (host[:port][:password])

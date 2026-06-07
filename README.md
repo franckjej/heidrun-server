@@ -63,7 +63,11 @@ The annotated source of truth for the config surface is [`heidrun-server.example
 | `HEIDRUN_AGREEMENT` | _(unset)_ | Banner text pushed after login (transID 109) |
 | `HEIDRUN_CHAT_SUBJECT` | _(empty)_ | Initial public chat topic |
 | `HEIDRUN_DB_PATH` | _(in-memory)_ | SQLite file for accounts + file metadata |
-| `HEIDRUN_USER_HISTORY` | `on` | `0`/`false`/`no`/`off` disables `/usershistory` recording (privacy kill-switch) |
+| `HEIDRUN_AUDIT_LOG_ENABLED` | `on` | Master switch for the audit log (presence/transfers/auth/admin → a separate `audit_events` SQLite file, read via `/audit`). `0`/`false`/`no`/`off` disables all recording. Replaces `HEIDRUN_USER_HISTORY` |
+| `HEIDRUN_AUDIT_DB_PATH` | _(`<db>.audit.sqlite`)_ | Audit SQLite file; unset derives a sibling of `HEIDRUN_DB_PATH` (in-memory if that's also unset) |
+| `HEIDRUN_AUDIT_RETENTION_DAYS` | `90` | Days of audit history to keep (prune-on-write) |
+| `HEIDRUN_LOG_IP_ADDRESSES` | `off` | `1`/`true`/`yes`/`on` stores each client's raw IP in audit rows. Off by default — raw IPs are GDPR personal data |
+| `HEIDRUN_USER_HISTORY` | `on` | Deprecated alias of `HEIDRUN_AUDIT_LOG_ENABLED`; still honoured |
 | `HEIDRUN_SEND_USER_ACCESS` | `off` | `1`/`true`/`yes`/`on` pushes the HXD-style User Access bitmap (TX 354) after login so third-party clients light up admin UI. Off by default — it blanks the roster on Heidrun clients older than protocol rc18 |
 | `HEIDRUN_FILES_ROOT` | _(tempdir)_ | Directory the file ops operate on |
 | `HEIDRUN_NEWS_PATH` | _(in-memory)_ | JSON snapshot file for news state |
@@ -90,7 +94,8 @@ Users can issue server commands by typing them into the public chat input. Slash
 | `/broadcast <msg>` | Server-wide popup (transID 355). Admin-only (`.canBroadcast`) |
 | `/topic [text]` | Read or set the public chat topic. Set is admin-only |
 | `/kick <socketID>` | Disconnect a target. Admin-only (`.disconnectUsers`) |
-| `/usershistory [hours]` / `/history` | User join/leave history for the last 1–24h (default 1h). Admin-only (`.disconnectUsers`). Disable with `HEIDRUN_USER_HISTORY=0` |
+| `/usershistory [hours]` / `/history` | User join/leave history for the last 1–24h (default 1h). Admin-only (`.disconnectUsers`) |
+| `/audit [type:…] [user:…] [since:Nh\|Nd] [limit:N]` | Query the audit log (presence/transfers/auth/admin). Aliases `/transfers`, `/authlog`, `/adminlog`. Admin-only (`.disconnectUsers`) |
 | `/invisible` / `/visible` | Hide / re-show in peer rosters. Admin-only |
 | `/help` | List every command with one-line description |
 
