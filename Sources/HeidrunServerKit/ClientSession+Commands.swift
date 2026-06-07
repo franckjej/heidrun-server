@@ -346,6 +346,12 @@ extension ClientSession {
         }
     }
 
+    /// `true` when the args ask for usage (`help` / `--help` / `-h` / `?`).
+    static func auditArgsRequestHelp(_ args: [String]) -> Bool {
+        let tokens: Set<String> = ["help", "--help", "-h", "?"]
+        return args.contains { tokens.contains($0.lowercased()) }
+    }
+
     /// Alias command → implied default `type` filter (nil = no filter).
     static func defaultAuditType(forCommand command: String) -> String? {
         switch command {
@@ -396,6 +402,10 @@ extension ClientSession {
     /// `/transfers`, `/authlog`, `/adminlog`). Admin-only, gated on
     /// `.disconnectUsers` (same as `/usershistory`).
     func handleAuditCommand(command: String, args: [String]) async {
+        if Self.auditArgsRequestHelp(args) {
+            await sendAuditUsage()
+            return
+        }
         guard hasPrivilege(.disconnectUsers) else {
             await sendSystemReply("Permission denied: /audit requires the disconnectUsers privilege.")
             return
@@ -423,6 +433,17 @@ extension ClientSession {
             lines.append(parts.joined(separator: "  "))
         }
         await sendSystemReply(lines: lines)
+    }
+
+    /// Usage block for `/audit help` (and `--help` / `-h` / `?`).
+    func sendAuditUsage() async {
+        await sendSystemReply(lines: [
+            "/audit — query the audit log (admin):",
+            "  /audit [type:transfer|auth|admin|presence] [user:<name>] [since:Nh|Nd] [limit:N]",
+            "  defaults: all types, last 24h, 50 rows (limit max 500)",
+            "  e.g.  /audit type:auth user:bob since:7d",
+            "  aliases: /transfers /authlog /adminlog   (presence also: /usershistory)"
+        ])
     }
 
     /// `HH:mm:ss` in the server's local timezone — terse, time-only (the

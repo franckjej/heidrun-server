@@ -32,6 +32,17 @@ struct AuditCommandTests {
         #expect(parsed.limit == 50)
     }
 
+    @Test("help tokens are detected, real args are not")
+    func helpDetection() {
+        #expect(ClientSession.auditArgsRequestHelp(["help"]))
+        #expect(ClientSession.auditArgsRequestHelp(["--help"]))
+        #expect(ClientSession.auditArgsRequestHelp(["-h"]))
+        #expect(ClientSession.auditArgsRequestHelp(["?"]))
+        #expect(ClientSession.auditArgsRequestHelp(["type:auth", "HELP"]))  // case-insensitive
+        #expect(!ClientSession.auditArgsRequestHelp([]))
+        #expect(!ClientSession.auditArgsRequestHelp(["type:auth"]))
+    }
+
     @Test("alias command names imply a default type filter")
     func aliasDefaultType() {
         #expect(ClientSession.defaultAuditType(forCommand: "transfers") == "transfer")
