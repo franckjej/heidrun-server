@@ -336,9 +336,9 @@ restart. Because it's a separate file, this leaves accounts and news
 untouched.
 
 **Read it back:** the admin chat command
-`/audit [type:transfer|auth|admin|presence] [user:<name>] [since:Nh|Nd]
-[limit:N]` (aliases `/transfers`, `/authlog`, `/adminlog`; `/usershistory`
-shows presence). For ad-hoc analysis, query the SQLite file directly — the
+`/audit [--type transfer|auth|admin|presence] [--user <name>] [--since Nh|Nd]
+[--limit N]` (`/audit help` prints usage; aliases `/transfers`, `/authlog`,
+`/adminlog`; `/usershistory` shows presence). For ad-hoc analysis, query the SQLite file directly — the
 schema is one `audit_events` table indexed on `ts`, `(type, ts)`, and
 `(account, ts)`.
 

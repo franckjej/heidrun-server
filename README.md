@@ -95,7 +95,7 @@ Users can issue server commands by typing them into the public chat input. Slash
 | `/topic [text]` | Read or set the public chat topic. Set is admin-only |
 | `/kick <socketID>` | Disconnect a target. Admin-only (`.disconnectUsers`) |
 | `/usershistory [hours]` / `/history` | User join/leave history for the last 1–24h (default 1h). Admin-only (`.disconnectUsers`) |
-| `/audit [type:…] [user:…] [since:Nh\|Nd] [limit:N]` | Query the audit log (presence/transfers/auth/admin). Aliases `/transfers`, `/authlog`, `/adminlog`. Admin-only (`.disconnectUsers`) |
+| `/audit [--type …] [--user …] [--since Nh\|Nd] [--limit N]` | Query the audit log (presence/transfers/auth/admin); `/audit help` for usage. Aliases `/transfers`, `/authlog`, `/adminlog`. Admin-only (`.disconnectUsers`) |
 | `/invisible` / `/visible` | Hide / re-show in peer rosters. Admin-only |
 | `/help` | List every command with one-line description |
 

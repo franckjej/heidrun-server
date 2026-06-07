@@ -287,7 +287,7 @@ extension ClientSession {
             "  /version            — server version, build, and runtime info",
             "  /uptime             — show server uptime",
             "  /usershistory [h]   — user join/leave history, last h hours (admin)",
-            "  /audit [type:…] [user:…] [since:Nh|Nd] [limit:N] — audit log (admin)",
+            "  /audit [--type …] [--user …] [--since Nh|Nd] [--limit N] — audit log (admin)",
             "  /who, /users        — list connected users",
             "  /whoami             — your own session info",
             "  /away               — toggle your away status",
@@ -369,23 +369,32 @@ extension ClientSession {
         var limit: Int
     }
 
-    /// Parse `key:value` audit args. Unknown `type:` → nil kinds (all).
+    /// Parse `--flag value` audit args. Each recognised flag consumes the
+    /// next token as its value; an unknown flag or a dangling flag (no
+    /// following value) is skipped, leaving its default. Unknown `--type`
+    /// value → nil kinds (all).
     static func parseAuditArgs(_ args: [String], impliedType: String? = nil) -> AuditQuery {
         var kinds = impliedType.flatMap(auditKinds(forType:))
         var account: String?
         var hours = 24
         var limit = 50
-        for arg in args {
-            let parts = arg.split(separator: ":", maxSplits: 1).map(String.init)
-            guard parts.count == 2 else { continue }
-            let (key, value) = (parts[0].lowercased(), parts[1])
-            switch key {
-            case "type": kinds = auditKinds(forType: value.lowercased())
-            case "user", "account": account = value
-            case "since": hours = parseSince(value) ?? hours
-            case "limit": limit = Int(value).map { max(1, min(500, $0)) } ?? limit
-            default: break
+        var index = 0
+        while index < args.count {
+            let flag = args[index].lowercased()
+            let value: String? = index + 1 < args.count ? args[index + 1] : nil
+            switch flag {
+            case "--type":
+                if let value { kinds = auditKinds(forType: value.lowercased()); index += 1 }
+            case "--user", "--account":
+                if let value { account = value; index += 1 }
+            case "--since":
+                if let value { hours = parseSince(value) ?? hours; index += 1 }
+            case "--limit":
+                if let value { limit = Int(value).map { max(1, min(500, $0)) } ?? limit; index += 1 }
+            default:
+                break
             }
+            index += 1
         }
         return AuditQuery(kinds: kinds, account: account, hours: max(1, hours), limit: limit)
     }
@@ -398,7 +407,7 @@ extension ClientSession {
         return Int(lower).map { max(1, $0) }
     }
 
-    /// `/audit [type:…] [user:…] [since:Nh|Nd] [limit:N]` (+ aliases
+    /// `/audit [--type …] [--user …] [--since Nh|Nd] [--limit N]` (+ aliases
     /// `/transfers`, `/authlog`, `/adminlog`). Admin-only, gated on
     /// `.disconnectUsers` (same as `/usershistory`).
     func handleAuditCommand(command: String, args: [String]) async {
@@ -439,9 +448,9 @@ extension ClientSession {
     func sendAuditUsage() async {
         await sendSystemReply(lines: [
             "/audit — query the audit log (admin):",
-            "  /audit [type:transfer|auth|admin|presence] [user:<name>] [since:Nh|Nd] [limit:N]",
+            "  /audit [--type transfer|auth|admin|presence] [--user <name>] [--since Nh|Nd] [--limit N]",
             "  defaults: all types, last 24h, 50 rows (limit max 500)",
-            "  e.g.  /audit type:auth user:bob since:7d",
+            "  e.g.  /audit --type auth --user bob --since 7d",
             "  aliases: /transfers /authlog /adminlog   (presence also: /usershistory)"
         ])
     }

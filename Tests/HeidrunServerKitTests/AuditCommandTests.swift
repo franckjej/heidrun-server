@@ -14,13 +14,22 @@ struct AuditCommandTests {
         #expect(ClientSession.auditKinds(forType: "bogus") == nil)
     }
 
-    @Test("parses key:value args with defaults and clamps")
+    @Test("parses --flag value args with defaults and clamps")
     func argParsing() {
-        let parsed = ClientSession.parseAuditArgs(["type:auth", "user:bob", "since:7d", "limit:999"])
+        let parsed = ClientSession.parseAuditArgs(["--type", "auth", "--user", "bob", "--since", "7d", "--limit", "999"])
         #expect(parsed.kinds == [.loginOK, .loginFail])
         #expect(parsed.account == "bob")
         #expect(parsed.hours == 7 * 24)
         #expect(parsed.limit == 500)              // clamped from 999
+    }
+
+    @Test("--account is an alias for --user; a flag with no value is ignored")
+    func argAliasesAndDangling() {
+        #expect(ClientSession.parseAuditArgs(["--account", "alice"]).account == "alice")
+        // A trailing flag with no value must not crash or consume past the end.
+        let parsed = ClientSession.parseAuditArgs(["--type", "admin", "--limit"])
+        #expect(Set(parsed.kinds ?? []) == [.accountCreate, .accountModify, .accountDelete, .kick, .broadcast, .topic])
+        #expect(parsed.limit == 50)               // dangling --limit left the default
     }
 
     @Test("defaults: no args → all kinds, 24h, limit 50")
