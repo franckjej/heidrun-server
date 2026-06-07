@@ -61,6 +61,8 @@ extension ClientSession {
             await handleUptimeCommand(args: args)
         case "usershistory", "history":
             await handleUsersHistoryCommand(args: args)
+        case "audit", "transfers", "authlog", "adminlog":
+            await handleAuditCommand(command: command, args: args)
         case "kick":
             await handleKickCommand(args: args)
         case "invisible":
@@ -285,6 +287,7 @@ extension ClientSession {
             "  /version            — server version, build, and runtime info",
             "  /uptime             — show server uptime",
             "  /usershistory [h]   — user join/leave history, last h hours (admin)",
+            "  /audit [type:…] [user:…] [since:Nh|Nd] [limit:N] — audit log (admin)",
             "  /who, /users        — list connected users",
             "  /whoami             — your own session info",
             "  /away               — toggle your away status",
@@ -327,6 +330,97 @@ extension ClientSession {
             let verb = event.kind == .join ? "entered" : "left"
             let socketText = event.socket.map { " (\($0))" } ?? ""
             lines.append("  \(when)  \(event.nickname ?? "?")\(socketText) \(verb)")
+        }
+        await sendSystemReply(lines: lines)
+    }
+
+    /// Maps a `type:` token (or an alias command's implied type) to the
+    /// event kinds it covers. `nil` for an unknown token.
+    static func auditKinds(forType type: String) -> [AuditEvent.Kind]? {
+        switch type {
+        case "transfer", "transfers": return [.upload, .download]
+        case "auth": return [.loginOK, .loginFail]
+        case "admin": return [.accountCreate, .accountModify, .accountDelete, .kick, .broadcast, .topic]
+        case "presence": return [.join, .leave]
+        default: return nil
+        }
+    }
+
+    /// Alias command → implied default `type` filter (nil = no filter).
+    static func defaultAuditType(forCommand command: String) -> String? {
+        switch command {
+        case "transfers": return "transfer"
+        case "authlog": return "auth"
+        case "adminlog": return "admin"
+        default: return nil          // "audit"
+        }
+    }
+
+    struct AuditQuery: Equatable {
+        var kinds: [AuditEvent.Kind]?
+        var account: String?
+        var hours: Int
+        var limit: Int
+    }
+
+    /// Parse `key:value` audit args. Unknown `type:` → nil kinds (all).
+    static func parseAuditArgs(_ args: [String], impliedType: String? = nil) -> AuditQuery {
+        var kinds = impliedType.flatMap(auditKinds(forType:))
+        var account: String?
+        var hours = 24
+        var limit = 50
+        for arg in args {
+            let parts = arg.split(separator: ":", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { continue }
+            let (key, value) = (parts[0].lowercased(), parts[1])
+            switch key {
+            case "type": kinds = auditKinds(forType: value.lowercased())
+            case "user", "account": account = value
+            case "since": hours = parseSince(value) ?? hours
+            case "limit": limit = Int(value).map { max(1, min(500, $0)) } ?? limit
+            default: break
+            }
+        }
+        return AuditQuery(kinds: kinds, account: account, hours: max(1, hours), limit: limit)
+    }
+
+    /// `Nh` / `Nd` → hours. Bare integer treated as hours.
+    static func parseSince(_ value: String) -> Int? {
+        let lower = value.lowercased()
+        if lower.hasSuffix("d"), let days = Int(lower.dropLast()) { return max(1, days) * 24 }
+        if lower.hasSuffix("h"), let hrs = Int(lower.dropLast()) { return max(1, hrs) }
+        return Int(lower).map { max(1, $0) }
+    }
+
+    /// `/audit [type:…] [user:…] [since:Nh|Nd] [limit:N]` (+ aliases
+    /// `/transfers`, `/authlog`, `/adminlog`). Admin-only, gated on
+    /// `.disconnectUsers` (same as `/usershistory`).
+    func handleAuditCommand(command: String, args: [String]) async {
+        guard hasPrivilege(.disconnectUsers) else {
+            await sendSystemReply("Permission denied: /audit requires the disconnectUsers privilege.")
+            return
+        }
+        guard let auditLog else {
+            await sendSystemReply("Audit log is disabled on this server.")
+            return
+        }
+        let query = Self.parseAuditArgs(args, impliedType: Self.defaultAuditType(forCommand: command))
+        let events = await auditLog.query(
+            type: query.kinds, account: query.account, withinHours: query.hours, limit: query.limit
+        )
+        guard !events.isEmpty else {
+            await sendSystemReply("No audit events match (last \(query.hours)h).")
+            return
+        }
+        var lines = ["Audit (\(events.count), last \(query.hours)h):"]
+        for event in events {
+            let when = Self.formatHistoryTime(event.timestamp)
+            let who = event.nickname ?? event.account ?? "?"
+            var parts = ["  \(when)  \(event.kind.rawValue)  \(who)"]
+            if let target = event.target { parts.append(target) }
+            if let bytes = event.bytes { parts.append("\(bytes)B") }
+            if let ip = event.ip { parts.append(ip) }
+            lines.append(parts.joined(separator: "  "))
         }
         await sendSystemReply(lines: lines)
     }
