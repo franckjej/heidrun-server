@@ -56,4 +56,21 @@ struct AuditCaptureTests {
             #expect(rows.contains { $0.account == "admin" })
         }
     }
+
+    @Test("creating an account writes an account_create row naming the target")
+    func accountCreateRecorded() async throws {
+        let (config, auditPath) = Self.auditConfig()
+        try await ServerTestHelpers.withRunningServer(configuration: config) { _, port in
+            let admin = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin"
+            )
+            try await admin.createLogin(
+                name: "newbie", password: "pw", nickname: "Newbie", privileges: []
+            )
+            try await Task.sleep(for: .milliseconds(200))
+            let reader = try AuditLog(path: auditPath, retentionDays: 90)
+            let rows = await reader.query(type: [.accountCreate], account: nil, withinHours: 1, limit: 50)
+            #expect(rows.contains { $0.target == "newbie" && $0.account == "admin" })
+        }
+    }
 }

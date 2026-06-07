@@ -366,6 +366,7 @@ extension ClientSession {
             await sendSystemReply("Usage: /broadcast <message>")
             return
         }
+        await audit(.broadcast, detail: message)
         // Native 355 push for clients that render server broadcasts as
         // a modal popup (mobius, mierauhotline, classic Hotline).
         await registry.broadcast(
@@ -407,6 +408,7 @@ extension ClientSession {
             return
         }
         await chatSubject.set(text)
+        await audit(.topic, target: text)
         await registry.broadcast(
             PacketEncoder.publicChatSubjectPush(subject: text, encoding: stringEncoding),
             excluding: nil

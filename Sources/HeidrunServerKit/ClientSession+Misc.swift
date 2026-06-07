@@ -44,6 +44,7 @@ extension ClientSession {
             transactionID: 355
         ))
         guard !message.isEmpty else { return }
+        await audit(.broadcast, detail: message)
         await registry.broadcast(
             PacketEncoder.serverBroadcastPush(message: message, encoding: stringEncoding),
             excluding: socketID

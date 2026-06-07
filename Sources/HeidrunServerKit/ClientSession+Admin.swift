@@ -22,6 +22,7 @@ extension ClientSession {
         ))
         guard target != 0,
               let session = await registry.lookup(socketID: target) else { return }
+        await audit(.kick, target: "socket \(target)")
         await session.disconnectNow()
     }
 
@@ -54,6 +55,7 @@ extension ClientSession {
                 nickname: nickname,
                 permissions: permissions
             )
+            await audit(.accountCreate, target: login)
             try? await writer(PacketEncoder.emptyReply(
                 taskNumber: header.taskNumber,
                 transactionID: 350
@@ -85,6 +87,7 @@ extension ClientSession {
         }
         let removed = (try? await accounts.delete(login: login)) ?? false
         if removed {
+            await audit(.accountDelete, target: login)
             try? await writer(PacketEncoder.emptyReply(
                 taskNumber: header.taskNumber,
                 transactionID: 351
@@ -156,6 +159,7 @@ extension ClientSession {
             newPassword: password
         ))
         if updated != nil {
+            await audit(.accountModify, target: login)
             try? await writer(PacketEncoder.emptyReply(
                 taskNumber: header.taskNumber,
                 transactionID: 353
