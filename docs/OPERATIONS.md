@@ -306,6 +306,42 @@ environment:
 - A missing / unreadable file logs a warning at startup and disables the banner — 212 requests then reply with an error, which the client maps to "no banner" rather than treating as a failure. A half-configured deploy can't accidentally serve a stale or empty banner.
 - The bytes ride the same HTXF side-channel as file downloads (port + 1, or TLS sibling + 1 when TLS is on), with a banner-flavoured preamble (`type=2`) so the dispatcher can distinguish it from a regular file stream.
 
+## Audit log
+
+The server records significant events to a dedicated SQLite file
+(`audit_db_path`, default a `<db_path>.audit.sqlite` sibling), separate
+from the accounts DB so it can be rotated or erased on its own.
+
+**What's recorded:** presence (`join` / `leave`), file transfers
+(`upload` / `download`, logged at request time with filename and size),
+auth (`login_ok` / `login_fail`, the latter carrying the attempted
+account), and admin actions (`account_create` / `account_modify` /
+`account_delete`, `kick`, `broadcast`, `topic`).
+
+**Retention:** `audit_retention_days` (default 90). Rows older than the
+window are pruned on every write.
+
+**IP addresses:** off by default. `log_ip_addresses = true` (env
+`HEIDRUN_LOG_IP_ADDRESSES`) stores each client's raw IP in audit rows.
+Raw IPs are personal data under the GDPR — enable only with a lawful
+basis and a retention period you can justify; `audit_retention_days`
+bounds how long they persist.
+
+**Disable entirely:** `audit_log_enabled = false` (env
+`HEIDRUN_AUDIT_LOG_ENABLED=0`). Replaces the older `user_history_enabled`,
+still honoured as an alias.
+
+**Erase the log:** stop the server, delete the `*.audit.sqlite` file,
+restart. Because it's a separate file, this leaves accounts and news
+untouched.
+
+**Read it back:** the admin chat command
+`/audit [type:transfer|auth|admin|presence] [user:<name>] [since:Nh|Nd]
+[limit:N]` (aliases `/transfers`, `/authlog`, `/adminlog`; `/usershistory`
+shows presence). For ad-hoc analysis, query the SQLite file directly — the
+schema is one `audit_events` table indexed on `ts`, `(type, ts)`, and
+`(account, ts)`.
+
 ## Out of scope (v1)
 
 Deferred to v1.5:
