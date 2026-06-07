@@ -90,6 +90,7 @@ extension ClientSession {
                 encoding: stringEncoding
             )
             let transferID = await transfers.registerFramedDownload(envelope: envelope)
+            await audit(.download, target: name, bytes: Int64(envelope.count), result: "granted")
             try? await writer(PacketEncoder.downloadFileReply(
                 taskNumber: header.taskNumber,
                 transferID: transferID,
@@ -99,6 +100,7 @@ extension ClientSession {
         }
 
         let transferID = await transfers.registerDownload(bytes: bytes, offset: offset)
+        await audit(.download, target: name, bytes: Int64(bytes.count), result: "granted")
         try? await writer(PacketEncoder.downloadFileReply(
             taskNumber: header.taskNumber,
             transferID: transferID,
@@ -174,6 +176,7 @@ extension ClientSession {
             return running &+ per &+ 4    // 4 bytes for the UInt32 itemFileSize prefix
         }
         let transferID = await transfers.registerFolderDownload(items: items)
+        await audit(.download, target: name, result: "granted", detail: "folder")
         try? await writer(PacketEncoder.downloadFileReply(
             taskNumber: header.taskNumber,
             transferID: transferID,
@@ -208,6 +211,7 @@ extension ClientSession {
             name: name,
             itemCount: itemCount
         )
+        await audit(.upload, target: name, result: "granted", detail: "folder")
         serverLogger.info("folder upload accepted", metadata: [
             "nickname": "\(nickname)",
             "socketID": "\(socketID)",
@@ -271,6 +275,7 @@ extension ClientSession {
             declaredSize: declaredSize,
             resume: resume
         )
+        await audit(.upload, target: name, bytes: Int64(declaredSize), result: "granted")
         serverLogger.info("upload accepted", metadata: [
             "nickname": "\(nickname)",
             "socketID": "\(socketID)",

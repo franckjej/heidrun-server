@@ -73,4 +73,28 @@ struct AuditCaptureTests {
             #expect(rows.contains { $0.target == "newbie" && $0.account == "admin" })
         }
     }
+
+    @Test("a download request writes a download row naming the file")
+    func downloadRecorded() async throws {
+        let filesRoot = NSTemporaryDirectory() + "heidrun-files-\(UUID().uuidString)"
+        try FileManager.default.createDirectory(atPath: filesRoot, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(atPath: filesRoot) }
+        let payload = Data("hello".utf8)
+        try payload.write(to: URL(fileURLWithPath: filesRoot + "/readme.txt"))
+
+        let (config, auditPath) = Self.auditConfig(filesRoot: filesRoot)
+        try await ServerTestHelpers.withRunningServer(configuration: config) { _, port in
+            let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Bob")
+            _ = try await client.startDownload(
+                at: RemotePath(components: []),
+                name: "readme.txt",
+                dataForkOffset: 0,
+                resourceForkOffset: 0
+            )
+            try await Task.sleep(for: .milliseconds(200))
+            let reader = try AuditLog(path: auditPath, retentionDays: 90)
+            let rows = await reader.query(type: [.download], account: nil, withinHours: 1, limit: 50)
+            #expect(rows.contains { $0.target == "readme.txt" })
+        }
+    }
 }
