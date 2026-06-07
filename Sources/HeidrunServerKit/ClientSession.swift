@@ -657,6 +657,7 @@ public actor ClientSession {
                     "tls": "\(isTLS)",
                     "clientVersion": "\(clientVersion.map(String.init) ?? "—")"
                 ])
+                await audit(.loginFail, account: login, nickname: nick, socket: 0, result: "denied")
                 try? await writer(PacketEncoder.errorReply(
                     taskNumber: header.taskNumber,
                     transactionID: 107
@@ -688,6 +689,7 @@ public actor ClientSession {
         )
         self.socketID = assigned
         await audit(.join, socket: assigned)
+        await audit(.loginOK, socket: assigned, result: "ok")
         serverLogger.info("user logged in", metadata: [
             "socketID": "\(assigned)",
             "nickname": "\(nick)",
