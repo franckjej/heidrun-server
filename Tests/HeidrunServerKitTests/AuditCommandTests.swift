@@ -41,6 +41,15 @@ struct AuditCommandTests {
         #expect(parsed.limit == 50)
     }
 
+    @Test("smart-dash-substituted flags (em/en dash) still parse as --flags")
+    func smartDashTolerance() {
+        // macOS NSTextView "smart dashes" turns "--" into an em/en dash in
+        // the chat input, so a typed --type arrives as —type.
+        #expect(ClientSession.parseAuditArgs(["\u{2014}type", "auth"]).kinds == [.loginOK, .loginFail])  // em dash
+        #expect(ClientSession.parseAuditArgs(["\u{2013}user", "bob"]).account == "bob")                  // en dash
+        #expect(ClientSession.auditArgsRequestHelp(["\u{2014}help"]))
+    }
+
     @Test("help tokens are detected, real args are not")
     func helpDetection() {
         #expect(ClientSession.auditArgsRequestHelp(["help"]))

@@ -346,10 +346,21 @@ extension ClientSession {
         }
     }
 
+    /// Restore a `--flag` token mangled by macOS NSTextView "smart dashes",
+    /// which rewrites a typed `--` into an em-dash (—, U+2014) or en-dash
+    /// (–, U+2013). A leading such dash is mapped back to `--` so flags
+    /// typed in a chat input still parse. Everything else passes through.
+    static func normalizeAuditFlag(_ token: String) -> String {
+        if token.hasPrefix("\u{2014}") || token.hasPrefix("\u{2013}") {
+            return "--" + token.dropFirst()
+        }
+        return token
+    }
+
     /// `true` when the args ask for usage (`help` / `--help` / `-h` / `?`).
     static func auditArgsRequestHelp(_ args: [String]) -> Bool {
         let tokens: Set<String> = ["help", "--help", "-h", "?"]
-        return args.contains { tokens.contains($0.lowercased()) }
+        return args.contains { tokens.contains(normalizeAuditFlag($0).lowercased()) }
     }
 
     /// Alias command → implied default `type` filter (nil = no filter).
@@ -380,7 +391,7 @@ extension ClientSession {
         var limit = 50
         var index = 0
         while index < args.count {
-            let flag = args[index].lowercased()
+            let flag = Self.normalizeAuditFlag(args[index]).lowercased()
             let value: String? = index + 1 < args.count ? args[index + 1] : nil
             switch flag {
             case "--type":
