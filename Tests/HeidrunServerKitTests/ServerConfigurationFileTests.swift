@@ -140,4 +140,38 @@ struct ServerConfigurationFileTests {
         #expect(file.resolved(environment: [:]).userHistoryEnabled == false)
         #expect(file.resolved(environment: ["HEIDRUN_USER_HISTORY": "1"]).userHistoryEnabled == true)
     }
+
+    @Test("audit log defaults on; retention defaults to 90; ip off")
+    func auditDefaults() {
+        let config = ServerConfigurationFile().resolved(environment: [:])
+        #expect(config.auditLogEnabled == true)
+        #expect(config.auditRetentionDays == 90)
+        #expect(config.logIPAddresses == false)
+    }
+
+    @Test("audit env vars override the file")
+    func auditEnvOverride() {
+        let file = ServerConfigurationFile()
+        let resolved = file.resolved(environment: [
+            "HEIDRUN_AUDIT_LOG_ENABLED": "off",
+            "HEIDRUN_AUDIT_RETENTION_DAYS": "30",
+            "HEIDRUN_LOG_IP_ADDRESSES": "yes"
+        ])
+        #expect(resolved.auditLogEnabled == false)
+        #expect(resolved.auditRetentionDays == 30)
+        #expect(resolved.logIPAddresses == true)
+    }
+
+    @Test("audit_db_path derives a sibling of db_path when unset")
+    func auditPathDerivation() {
+        let file = ServerConfigurationFile(dbPath: "/var/lib/heidrun/heidrun.sqlite")
+        let resolved = file.resolved(environment: [:])
+        #expect(resolved.auditDBPath == "/var/lib/heidrun/heidrun.audit.sqlite")
+    }
+
+    @Test("deprecated user_history_enabled drives the master switch when audit unset")
+    func userHistoryAliasHonored() {
+        let file = ServerConfigurationFile(userHistoryEnabled: false)
+        #expect(file.resolved(environment: [:]).auditLogEnabled == false)
+    }
 }

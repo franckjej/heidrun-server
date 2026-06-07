@@ -166,6 +166,27 @@ public struct ServerConfiguration: Sendable {
     /// `HEIDRUN_SEND_USER_ACCESS` (`1`/`true`/`yes`/`on` enables).
     public var sendUserAccess: Bool
 
+    /// Master switch for the audit log (presence, transfers, auth, admin
+    /// events → the separate `audit_events` SQLite file). Default `true`.
+    /// Subsumes the deprecated `user_history_enabled`. Config:
+    /// `audit_log_enabled`; env: `HEIDRUN_AUDIT_LOG_ENABLED`.
+    public var auditLogEnabled: Bool
+
+    /// On-disk path for the audit SQLite file. `nil` = in-memory (wipes
+    /// on restart). When unset in config it is derived as a
+    /// `<db>.audit.sqlite` sibling of `accountStorePath`.
+    public var auditDBPath: String?
+
+    /// Days of audit history to retain. Prune-on-write drops older rows.
+    /// Default `90`. Config: `audit_retention_days`; env:
+    /// `HEIDRUN_AUDIT_RETENTION_DAYS`.
+    public var auditRetentionDays: Int
+
+    /// Whether to store the client's raw IP in audit rows. **Default
+    /// `false`** (GDPR: raw IPs are personal data). Config:
+    /// `log_ip_addresses`; env: `HEIDRUN_LOG_IP_ADDRESSES`.
+    public var logIPAddresses: Bool
+
     public init(
         port: UInt16 = 5500,
         bindHost: String = "0.0.0.0",
@@ -194,7 +215,11 @@ public struct ServerConfiguration: Sendable {
         startedAt: Date = Date(),
         resetAdminPermissions: Bool = false,
         userHistoryEnabled: Bool = true,
-        sendUserAccess: Bool = false
+        sendUserAccess: Bool = false,
+        auditLogEnabled: Bool = true,
+        auditDBPath: String? = nil,
+        auditRetentionDays: Int = 90,
+        logIPAddresses: Bool = false
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -224,5 +249,9 @@ public struct ServerConfiguration: Sendable {
         self.resetAdminPermissions = resetAdminPermissions
         self.userHistoryEnabled = userHistoryEnabled
         self.sendUserAccess = sendUserAccess
+        self.auditLogEnabled = auditLogEnabled
+        self.auditDBPath = auditDBPath
+        self.auditRetentionDays = auditRetentionDays
+        self.logIPAddresses = logIPAddresses
     }
 }

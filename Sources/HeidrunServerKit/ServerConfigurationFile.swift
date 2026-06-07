@@ -91,6 +91,23 @@ public struct ServerConfigurationFile: Codable, Sendable {
     /// `send_user_access`; env `HEIDRUN_SEND_USER_ACCESS`.
     public var sendUserAccess: Bool?
 
+    /// Audit-log master switch. Config key `audit_log_enabled`; env
+    /// `HEIDRUN_AUDIT_LOG_ENABLED`. Defaults on; subsumes the deprecated
+    /// `user_history_enabled` (honored as an alias when this is unset).
+    public var auditLogEnabled: Bool?
+
+    /// Audit SQLite path. Config key `audit_db_path`; env
+    /// `HEIDRUN_AUDIT_DB_PATH`. Unset → derived `<db_path>.audit.sqlite`.
+    public var auditDBPath: String?
+
+    /// Audit retention in days. Config key `audit_retention_days`; env
+    /// `HEIDRUN_AUDIT_RETENTION_DAYS`. Default 90.
+    public var auditRetentionDays: Int?
+
+    /// Store raw client IPs in audit rows. Config key `log_ip_addresses`;
+    /// env `HEIDRUN_LOG_IP_ADDRESSES`. Default off (GDPR).
+    public var logIPAddresses: Bool?
+
     public struct BootstrapAdminFile: Codable, Sendable {
         public var login: String?
         public var password: String?
@@ -132,7 +149,11 @@ public struct ServerConfigurationFile: Codable, Sendable {
         idleAwayPollInterval: Int? = nil,
         resetAdminPermissions: Bool? = nil,
         userHistoryEnabled: Bool? = nil,
-        sendUserAccess: Bool? = nil
+        sendUserAccess: Bool? = nil,
+        auditLogEnabled: Bool? = nil,
+        auditDBPath: String? = nil,
+        auditRetentionDays: Int? = nil,
+        logIPAddresses: Bool? = nil
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -159,6 +180,10 @@ public struct ServerConfigurationFile: Codable, Sendable {
         self.resetAdminPermissions = resetAdminPermissions
         self.userHistoryEnabled = userHistoryEnabled
         self.sendUserAccess = sendUserAccess
+        self.auditLogEnabled = auditLogEnabled
+        self.auditDBPath = auditDBPath
+        self.auditRetentionDays = auditRetentionDays
+        self.logIPAddresses = logIPAddresses
     }
 
     enum CodingKeys: String, CodingKey {
@@ -187,6 +212,10 @@ public struct ServerConfigurationFile: Codable, Sendable {
         case resetAdminPermissions = "reset_admin_permissions"
         case userHistoryEnabled = "user_history_enabled"
         case sendUserAccess = "send_user_access"
+        case auditLogEnabled = "audit_log_enabled"
+        case auditDBPath = "audit_db_path"
+        case auditRetentionDays = "audit_retention_days"
+        case logIPAddresses = "log_ip_addresses"
     }
 
     public enum LoadError: Swift.Error, Equatable {
@@ -367,6 +396,46 @@ public struct ServerConfigurationFile: Codable, Sendable {
             }
             return sendUserAccess ?? false
         }()
+        // Audit master switch — env wins ("0/false/no/off" disables).
+        // Default ON; falls back to the deprecated user_history_enabled
+        // when audit_log_enabled is unset, so old configs keep working.
+        let resolvedAuditEnabled: Bool = {
+            if let raw = environment["HEIDRUN_AUDIT_LOG_ENABLED"] {
+                switch raw.lowercased() {
+                case "0", "false", "no", "off": return false
+                default: return true
+                }
+            }
+            if let explicit = auditLogEnabled { return explicit }
+            return resolvedUserHistory          // deprecated alias
+        }()
+        // Audit DB path — env > file > derived sibling of db_path.
+        let resolvedAuditDBPath: String? = {
+            if let raw = environment["HEIDRUN_AUDIT_DB_PATH"] { return raw }
+            if let explicit = auditDBPath { return explicit }
+            guard let dbPath = resolvedDBPath else { return nil }
+            return URL(fileURLWithPath: dbPath)
+                .deletingPathExtension()
+                .appendingPathExtension("audit.sqlite")
+                .path
+        }()
+        // Audit retention — env wins; clamp to ≥ 1; default 90.
+        let resolvedAuditRetentionDays: Int = {
+            if let raw = environment["HEIDRUN_AUDIT_RETENTION_DAYS"], let parsed = Int(raw) {
+                return max(1, parsed)
+            }
+            return max(1, auditRetentionDays ?? 90)
+        }()
+        // IP capture — env wins ("1/true/yes/on" enables); default OFF.
+        let resolvedLogIP: Bool = {
+            if let raw = environment["HEIDRUN_LOG_IP_ADDRESSES"] {
+                switch raw.lowercased() {
+                case "1", "true", "yes", "on": return true
+                default: return false
+                }
+            }
+            return logIPAddresses ?? false
+        }()
 
         let resolvedIdlePoll: TimeInterval = {
             if let raw = environment["HEIDRUN_IDLE_AWAY_POLL"], let parsed = Int(raw), parsed > 0 {
@@ -402,7 +471,11 @@ public struct ServerConfigurationFile: Codable, Sendable {
             idleAwayPollInterval: resolvedIdlePoll,
             resetAdminPermissions: resolvedReset,
             userHistoryEnabled: resolvedUserHistory,
-            sendUserAccess: resolvedSendUserAccess
+            sendUserAccess: resolvedSendUserAccess,
+            auditLogEnabled: resolvedAuditEnabled,
+            auditDBPath: resolvedAuditDBPath,
+            auditRetentionDays: resolvedAuditRetentionDays,
+            logIPAddresses: resolvedLogIP
         )
     }
 }

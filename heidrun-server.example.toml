@@ -70,6 +70,30 @@ files_root = "/var/lib/heidrun/files"
 # Env override: HEIDRUN_USER_HISTORY ("0"/"false"/"no"/"off" disables).
 # user_history_enabled = false
 
+# --- Audit log -------------------------------------------------------------
+# A separate SQLite file recording presence, file transfers, logins, and
+# admin actions, read back via the admin /audit chat command. Distinct from
+# the accounts DB so it can be rotated or erased independently.
+#
+# Master switch. true (default) records audit events; false disables all
+# recording. Env: HEIDRUN_AUDIT_LOG_ENABLED ("0/false/no/off" disables).
+# (Replaces the older user_history_enabled, still honored as an alias.)
+# audit_log_enabled = true
+
+# Audit DB path. Omit to derive "<db_path>.audit.sqlite" automatically.
+# In-memory (wipes on restart) when db_path is also unset. Env:
+# HEIDRUN_AUDIT_DB_PATH.
+# audit_db_path = "/var/lib/heidrun/heidrun.audit.sqlite"
+
+# Days of audit history to keep (prune-on-write). Default 90. Env:
+# HEIDRUN_AUDIT_RETENTION_DAYS.
+# audit_retention_days = 90
+
+# Store the client's raw IP address in audit rows. false by default —
+# raw IPs are personal data under GDPR; enable only with a lawful basis.
+# Env: HEIDRUN_LOG_IP_ADDRESSES ("1/true/yes/on" enables).
+# log_ip_addresses = false
+
 # HXD-style "User Access" push (TX 354) after login: sends the connected
 # user's privileges bitmap so strict third-party clients (gtkhx, etc.)
 # can configure their admin UI up front. Privileges stay server-enforced
