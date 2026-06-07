@@ -413,12 +413,9 @@ enum PacketEncoder {
         account: Account,
         encoding: String.Encoding
     ) -> Data {
-        var permissionBytes = [UInt8](repeating: 0, count: 8)
-        for index in 0..<8 {
-            permissionBytes[index] = UInt8(
-                truncatingIfNeeded: account.permissions >> (index * 8)
-            )
-        }
+        // Canonical wire encoding via UserPrivileges (was a hand-rolled
+        // LSB-first loop that drifted from the protocol — see rc20).
+        let permissionBytes = UserPrivileges(rawValue: account.permissions).bytes
         return PacketCodec.encode(
             classID: 1,
             transactionID: 0, // openLogin reply (was 352)

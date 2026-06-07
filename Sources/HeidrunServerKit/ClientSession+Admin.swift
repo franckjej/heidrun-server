@@ -168,16 +168,14 @@ extension ClientSession {
         }
     }
 
-    /// Decode the 8-byte privileges blob into a UInt64 in the same
-    /// byte order as `HeidrunCore.UserPrivileges.init(bytes:)` (byte 0
-    /// = low bits).
+    /// Decode the 8-byte privileges blob into a UInt64. Delegates to
+    /// `HeidrunCore.UserPrivileges.init(bytes:)` so there's ONE wire decoder
+    /// — this hand-rolled the byte loop and drifted (stayed LSB-first when
+    /// the canonical decode went MSB-first in rc20), mis-reading classic
+    /// Hotline/HXD privilege bitmaps.
     nonisolated static func privilegesField(from fields: [PacketField]) -> UInt64 {
         guard let field = fields.first(.privileges) else { return 0 }
-        var value: UInt64 = 0
-        for (index, byte) in field.data.enumerated() where index < 8 {
-            value |= UInt64(byte) << (index * 8)
-        }
-        return value
+        return UserPrivileges(bytes: field.data).rawValue
     }
 
     /// Read the `modifyLogin` password field: nil → keep current,
