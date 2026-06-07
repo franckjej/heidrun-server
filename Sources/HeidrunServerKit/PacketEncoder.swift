@@ -42,6 +42,23 @@ enum PacketEncoder {
         )
     }
 
+    /// Push transID 354 (`User Access`) — the connected user's access
+    /// privileges as the 8-byte bitmap field (110). HXD-family servers send
+    /// this right after the login reply so a client can configure its admin
+    /// UI up front; privileges stay server-enforced per request regardless.
+    /// It's a push (classID 0), so it keeps its transaction type — strict
+    /// third-party clients route and gate on it.
+    static func userAccessPush(permissions: UInt64) -> Data {
+        PacketCodec.encode(
+            classID: 0,
+            transactionID: 354,
+            taskNumber: 0,
+            fields: [
+                PacketField(key: .privileges, data: Data(UserPrivileges(rawValue: permissions).bytes))
+            ]
+        )
+    }
+
     /// Empty reply to acknowledge a transaction without payload — used
     /// for the chat-send ack (105 reply) and similar fire-and-forget
     /// transactions that the client still tracks by taskNumber.

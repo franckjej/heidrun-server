@@ -49,10 +49,92 @@ enum ServerTestHelpers {
     }
 }
 
+/// Captures raw inbound packets via a `PacketObserver` — lets a test see
+/// server pushes that the client's dispatch intentionally swallows (e.g. a
+/// privileges-only TX 354, which decodes to no roster and no event).
+actor PacketRecorder {
+    private var packets: [(header: PacketHeader, fields: [PacketField])] = []
+    func record(header: PacketHeader, fields: [PacketField]) {
+        packets.append((header, fields))
+    }
+    func inbound(transactionID: UInt16) -> [(header: PacketHeader, fields: [PacketField])] {
+        packets.filter { $0.header.transactionID == transactionID }
+    }
+}
+
 @Suite("Server integration", .serialized)
 struct ServerIntegrationTests {
 
     // MARK: - Tests
+
+    @Test("login pushes a User Access bitmap (TX 354) carrying the account's privileges")
+    func loginPushesUserAccess() async throws {
+        let configuration = ServerConfiguration(
+            port: 0,
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin", password: "admin", nickname: "Admin"
+            ),
+            sendUserAccess: true   // opt-in; off by default (see below)
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let recorder = PacketRecorder()
+            let observer = PacketObserver { direction, header, fields in
+                guard direction == .inbound else { return }
+                Task { await recorder.record(header: header, fields: fields) }
+            }
+            let settings = ConnectionSettings(
+                name: "loopback", address: "127.0.0.1", port: port,
+                nickname: "Admin", login: "admin")
+            let client = try await HotlineNetworkClient.connect(
+                settings: settings, packetObserver: observer)
+            try await client.login(name: "admin", password: "admin", nickname: "Admin", icon: 0)
+            // Let the post-login pushes (354 / agreement / topic) land.
+            try await Task.sleep(for: .milliseconds(250))
+
+            let access = await recorder.inbound(transactionID: 354)
+            let push = try #require(access.first,
+                "server must push a User Access (TX 354) after login")
+            #expect(push.header.classID == 0, "User Access is a push, not a reply")
+            let privField = try #require(push.fields.first(.privileges),
+                "User Access must carry the privileges field (110)")
+            #expect(privField.data.count == 8)
+            let privileges = UserPrivileges(bytes: privField.data)
+            #expect(privileges.rawValue != 0, "admin must receive a non-empty privileges bitmap")
+            #expect(privileges.contains(.canBroadcast), "bootstrap admin holds every privilege")
+
+            await client.disconnect()
+        }
+    }
+
+    @Test("User Access push is omitted by default (opt-in only)")
+    func loginOmitsUserAccessByDefault() async throws {
+        // No `sendUserAccess` → defaults off → no 354, so pre-rc18 clients
+        // keep their roster.
+        let configuration = ServerConfiguration(
+            port: 0,
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin", password: "admin", nickname: "Admin"
+            )
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let recorder = PacketRecorder()
+            let observer = PacketObserver { direction, header, fields in
+                guard direction == .inbound else { return }
+                Task { await recorder.record(header: header, fields: fields) }
+            }
+            let settings = ConnectionSettings(
+                name: "loopback", address: "127.0.0.1", port: port,
+                nickname: "Admin", login: "admin")
+            let client = try await HotlineNetworkClient.connect(
+                settings: settings, packetObserver: observer)
+            try await client.login(name: "admin", password: "admin", nickname: "Admin", icon: 0)
+            try await Task.sleep(for: .milliseconds(250))
+
+            #expect(await recorder.inbound(transactionID: 354).isEmpty,
+                "354 must not be sent unless send_user_access is enabled")
+            await client.disconnect()
+        }
+    }
 
     @Test("client connects, logs in, sees itself in the user list")
     func loginAndUserList() async throws {

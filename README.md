@@ -64,6 +64,7 @@ The annotated source of truth for the config surface is [`heidrun-server.example
 | `HEIDRUN_CHAT_SUBJECT` | _(empty)_ | Initial public chat topic |
 | `HEIDRUN_DB_PATH` | _(in-memory)_ | SQLite file for accounts + file metadata |
 | `HEIDRUN_USER_HISTORY` | `on` | `0`/`false`/`no`/`off` disables `/usershistory` recording (privacy kill-switch) |
+| `HEIDRUN_SEND_USER_ACCESS` | `off` | `1`/`true`/`yes`/`on` pushes the HXD-style User Access bitmap (TX 354) after login so third-party clients light up admin UI. Off by default — it blanks the roster on Heidrun clients older than protocol rc18 |
 | `HEIDRUN_FILES_ROOT` | _(tempdir)_ | Directory the file ops operate on |
 | `HEIDRUN_NEWS_PATH` | _(in-memory)_ | JSON snapshot file for news state |
 | `HEIDRUN_ADMIN_LOGIN` / `HEIDRUN_ADMIN_PASSWORD` | `admin` / `admin` | Bootstrap admin (only seeded on a fresh DB) |

@@ -156,6 +156,16 @@ public struct ServerConfiguration: Sendable {
     /// `HEIDRUN_USER_HISTORY` (`0`/`false`/`no`/`off` disables).
     public var userHistoryEnabled: Bool
 
+    /// Opt-in HXD-style **User Access** push. When `true`, the server sends
+    /// a TX 354 carrying the connected user's privileges bitmap right after
+    /// the login reply, so third-party clients can configure their admin UI
+    /// up front (privileges stay server-enforced per request regardless).
+    /// **Default `false`:** a privileges-only 354 wipes the roster on Heidrun
+    /// clients older than protocol rc18, so enable it only once your client
+    /// population is updated. Config: `send_user_access`; env:
+    /// `HEIDRUN_SEND_USER_ACCESS` (`1`/`true`/`yes`/`on` enables).
+    public var sendUserAccess: Bool
+
     public init(
         port: UInt16 = 5500,
         bindHost: String = "0.0.0.0",
@@ -183,7 +193,8 @@ public struct ServerConfiguration: Sendable {
         idleAwayPollInterval: TimeInterval = 60,
         startedAt: Date = Date(),
         resetAdminPermissions: Bool = false,
-        userHistoryEnabled: Bool = true
+        userHistoryEnabled: Bool = true,
+        sendUserAccess: Bool = false
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -212,5 +223,6 @@ public struct ServerConfiguration: Sendable {
         self.startedAt = startedAt
         self.resetAdminPermissions = resetAdminPermissions
         self.userHistoryEnabled = userHistoryEnabled
+        self.sendUserAccess = sendUserAccess
     }
 }

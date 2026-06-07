@@ -48,4 +48,21 @@ struct ReplyHeaderTests {
         #expect(header.classID == 0)
         #expect(header.transactionID == 302)
     }
+
+    @Test("userAccessPush is a TX 354 push carrying the 8-byte privileges bitmap")
+    func userAccessPushWireFormat() throws {
+        let permissions: UInt64 = 0x1fffff7ffff
+        let packet = PacketEncoder.userAccessPush(permissions: permissions)
+
+        let header = try #require(PacketHeader(decoding: packet))
+        #expect(header.classID == 0, "User Access is a push")
+        #expect(header.transactionID == 354)
+
+        let fields = PacketCodec.decodeBody(Data(packet.dropFirst(PacketHeader.byteCount)))
+        let privField = try #require(fields.first(.privileges),
+            "must carry the privileges field (110)")
+        #expect(privField.data.count == 8, "privileges blob is always 8 bytes")
+        // Round-trips back to the same bitmap (little-endian, per UserPrivileges.bytes).
+        #expect(UserPrivileges(bytes: privField.data).rawValue == permissions)
+    }
 }

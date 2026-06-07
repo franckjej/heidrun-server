@@ -703,6 +703,20 @@ public actor ClientSession {
         )
         try? await writer(reply)
 
+        // User Access (TX 354): opt-in via `send_user_access`. Push the
+        // account's privileges bitmap so HXD-style clients configure their
+        // admin UI up front. Heidrun's own client ignores it (privileges are
+        // enforced per request); strict third-party clients gate admin
+        // controls on it. OFF by default — a privileges-only 354 wipes the
+        // roster on pre-rc18 Heidrun clients, so operators enable it only
+        // once their client population is updated. Sent to everyone when on —
+        // guests get their (possibly empty) guest bitmap.
+        if configuration.sendUserAccess {
+            try? await writer(PacketEncoder.userAccessPush(
+                permissions: authenticatedAccount?.permissions ?? 0
+            ))
+        }
+
         // Public chat topic: if the operator configured/set one, push it
         // (TX 119, Chat ID 0) so the client shows it in the public chat
         // header immediately on connect. Empty topic → nothing sent.

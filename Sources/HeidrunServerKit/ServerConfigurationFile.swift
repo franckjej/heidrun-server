@@ -86,6 +86,11 @@ public struct ServerConfigurationFile: Codable, Sendable {
     /// overrides. Config key `user_history_enabled`.
     public var userHistoryEnabled: Bool?
 
+    /// Opt-in HXD-style User Access (TX 354) push after login. Off by
+    /// default — see `ServerConfiguration.sendUserAccess`. Config key
+    /// `send_user_access`; env `HEIDRUN_SEND_USER_ACCESS`.
+    public var sendUserAccess: Bool?
+
     public struct BootstrapAdminFile: Codable, Sendable {
         public var login: String?
         public var password: String?
@@ -126,7 +131,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
         idleAwayThreshold: Int? = nil,
         idleAwayPollInterval: Int? = nil,
         resetAdminPermissions: Bool? = nil,
-        userHistoryEnabled: Bool? = nil
+        userHistoryEnabled: Bool? = nil,
+        sendUserAccess: Bool? = nil
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -152,6 +158,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
         self.idleAwayPollInterval = idleAwayPollInterval
         self.resetAdminPermissions = resetAdminPermissions
         self.userHistoryEnabled = userHistoryEnabled
+        self.sendUserAccess = sendUserAccess
     }
 
     enum CodingKeys: String, CodingKey {
@@ -179,6 +186,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
         case idleAwayPollInterval = "idle_away_poll_interval"
         case resetAdminPermissions = "reset_admin_permissions"
         case userHistoryEnabled = "user_history_enabled"
+        case sendUserAccess = "send_user_access"
     }
 
     public enum LoadError: Swift.Error, Equatable {
@@ -347,6 +355,18 @@ public struct ServerConfigurationFile: Codable, Sendable {
             }
             return userHistoryEnabled ?? true
         }()
+        // HXD User Access push — env wins, "1"/"true"/"yes"/"on" enables.
+        // OFF by default (file value, then `false`): it wipes the roster on
+        // pre-rc18 Heidrun clients, so it stays opt-in.
+        let resolvedSendUserAccess: Bool = {
+            if let raw = environment["HEIDRUN_SEND_USER_ACCESS"] {
+                switch raw.lowercased() {
+                case "1", "true", "yes", "on": return true
+                default: return false
+                }
+            }
+            return sendUserAccess ?? false
+        }()
 
         let resolvedIdlePoll: TimeInterval = {
             if let raw = environment["HEIDRUN_IDLE_AWAY_POLL"], let parsed = Int(raw), parsed > 0 {
@@ -381,7 +401,8 @@ public struct ServerConfigurationFile: Codable, Sendable {
             idleAwayThreshold: resolvedIdleThreshold,
             idleAwayPollInterval: resolvedIdlePoll,
             resetAdminPermissions: resolvedReset,
-            userHistoryEnabled: resolvedUserHistory
+            userHistoryEnabled: resolvedUserHistory,
+            sendUserAccess: resolvedSendUserAccess
         )
     }
 }
