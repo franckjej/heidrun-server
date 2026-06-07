@@ -149,11 +149,11 @@ public struct ServerConfiguration: Sendable {
     /// deliberately opt-in.
     public var resetAdminPermissions: Bool
 
-    /// Privacy kill-switch for the `/usershistory` command. When `false`,
-    /// `UserEventStore` is never constructed so no join/leave events are
-    /// recorded, and the command replies that history is disabled.
-    /// Defaults to `true`. Config: `user_history_enabled`; env:
-    /// `HEIDRUN_USER_HISTORY` (`0`/`false`/`no`/`off` disables).
+    /// Deprecated alias of `auditLogEnabled`, kept so old configs keep
+    /// working: at the config-file layer, `user_history_enabled` drives the
+    /// audit master switch when `audit_log_enabled` is unset. Defaults to
+    /// `true`. Config: `user_history_enabled`; env: `HEIDRUN_USER_HISTORY`
+    /// (`0`/`false`/`no`/`off` disables).
     public var userHistoryEnabled: Bool
 
     /// Opt-in HXD-style **User Access** push. When `true`, the server sends

@@ -70,11 +70,12 @@ public actor HeidrunServer {
         // as the accounts DB when one is configured; otherwise it's
         // in-memory and wipes alongside the account store.
         let fileMetadataStore = try FileMetadataStore(path: configuration.accountStorePath)
-        // User join/leave history. Same SQLite file as accounts (in-memory
-        // when no db_path). `nil` when the privacy kill-switch is off, which
-        // disables recording and makes /usershistory report it's disabled.
-        let userEventStore = configuration.userHistoryEnabled
-            ? try UserEventStore(path: configuration.accountStorePath)
+        // Audit log: presence, transfers, auth, and admin events in their
+        // own SQLite file (separate from accounts; in-memory when no path).
+        // nil when the master switch is off — disables all recording and
+        // makes /usershistory + /audit report it's disabled.
+        let auditLog = configuration.auditLogEnabled
+            ? try AuditLog(path: configuration.auditDBPath, retentionDays: configuration.auditRetentionDays)
             : nil
         let fileVault = try FileVault(
             rootPath: configuration.filesRootPath,
@@ -206,7 +207,7 @@ public actor HeidrunServer {
         let transfersCopy = self.transfers
         let privateChatsCopy = self.privateChats
         let accountsCopy = accountStore
-        let userEventsCopy = userEventStore
+        let auditLogCopy = auditLog
         let filesCopy = fileVault
         let configurationCopy = self.configuration
         let stringEncodingCopy = self.stringEncoding
@@ -219,7 +220,7 @@ public actor HeidrunServer {
             news: newsCopy,
             chatSubject: chatSubjectCopy,
             accounts: accountsCopy,
-            userEvents: userEventsCopy,
+            auditLog: auditLogCopy,
             files: filesCopy,
             transfers: transfersCopy,
             privateChats: privateChatsCopy,
@@ -276,7 +277,7 @@ public actor HeidrunServer {
                 news: newsCopy,
                 chatSubject: chatSubjectCopy,
                 accounts: accountsCopy,
-                userEvents: userEventsCopy,
+                auditLog: auditLogCopy,
                 files: filesCopy,
                 transfers: transfersCopy,
                 privateChats: privateChatsCopy,
@@ -433,7 +434,7 @@ public actor HeidrunServer {
         news: NewsTree,
         chatSubject: ChatSubjectStore,
         accounts: AccountStore,
-        userEvents: UserEventStore?,
+        auditLog: AuditLog?,
         files: FileVault,
         transfers: TransferRegistry,
         privateChats: PrivateChatRegistry,
@@ -471,7 +472,7 @@ public actor HeidrunServer {
                                 news: news,
                                 chatSubject: chatSubject,
                                 accounts: accounts,
-                                userEvents: userEvents,
+                                auditLog: auditLog,
                                 files: files,
                                 transfers: transfers,
                                 privateChats: privateChats,
@@ -580,7 +581,7 @@ public actor HeidrunServer {
         news: NewsTree,
         chatSubject: ChatSubjectStore,
         accounts: AccountStore,
-        userEvents: UserEventStore?,
+        auditLog: AuditLog?,
         files: FileVault,
         transfers: TransferRegistry,
         privateChats: PrivateChatRegistry,
@@ -597,6 +598,7 @@ public actor HeidrunServer {
             }
             return address.ipAddress ?? "\(address)"
         }()
+        let remoteIP: String? = channelBox.value.remoteAddress?.ipAddress
         let session = ClientSession(
             registry: registry,
             news: news,
@@ -606,9 +608,10 @@ public actor HeidrunServer {
             transfers: transfers,
             privateChats: privateChats,
             configuration: configuration,
-            userEvents: userEvents,
+            auditLog: auditLog,
             stringEncoding: stringEncoding,
             remoteHost: remoteHost,
+            remoteIP: remoteIP,
             isTLS: isTLS,
             bannerBytes: bannerBytes,
             bannerKind: bannerKind,

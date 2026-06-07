@@ -1103,7 +1103,7 @@ struct ChatCommandsTests {
             bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
                 login: "admin", password: "admin", nickname: "Admin"
             ),
-            userHistoryEnabled: false
+            auditLogEnabled: false
         )
         try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
             let admin = try await ServerTestHelpers.connectAndLogin(
@@ -1114,7 +1114,7 @@ struct ChatCommandsTests {
             async let reply = Self.awaitChat(admin) { $0.contains("disabled") }
             try await admin.sendChat("/history", in: nil, isAction: false)  // alias
             let line = try await reply
-            #expect(line.contains("User history is disabled on this server."))
+            #expect(line.contains("Audit log is disabled on this server."))
         }
     }
 

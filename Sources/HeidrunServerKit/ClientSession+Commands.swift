@@ -301,20 +301,22 @@ extension ClientSession {
     /// `/usershistory [hours]` (alias `/history`) — admin-only. Lists
     /// every user that entered or left in the last `hours` (default 1,
     /// clamped 1…24), oldest first, one `HH:mm:ss  <nick> entered|left`
-    /// line each. Gated on `.disconnectUsers`. Replies that it's off when
-    /// the operator disabled history (user_history_enabled=false /
-    /// HEIDRUN_USER_HISTORY=0).
+    /// line each. Gated on `.disconnectUsers`. Backed by the audit log
+    /// (presence events); replies that it's off when the operator
+    /// disabled it (audit_log_enabled=false / HEIDRUN_AUDIT_LOG_ENABLED=0).
     func handleUsersHistoryCommand(args: [String]) async {
         guard hasPrivilege(.disconnectUsers) else {
             await sendSystemReply("Permission denied: /usershistory requires the disconnectUsers privilege.")
             return
         }
-        guard let userEvents else {
-            await sendSystemReply("User history is disabled on this server.")
+        guard let auditLog else {
+            await sendSystemReply("Audit log is disabled on this server.")
             return
         }
         let hours = max(1, min(24, args.first.flatMap(Int.init) ?? 1))
-        let events = await userEvents.events(withinHours: hours)
+        let events = await auditLog.query(
+            type: [.join, .leave], account: nil, withinHours: hours, limit: 500
+        )
         guard !events.isEmpty else {
             await sendSystemReply("No user activity in the last \(hours)h.")
             return
@@ -322,8 +324,9 @@ extension ClientSession {
         var lines = ["User history (last \(hours)h):"]
         for event in events {
             let when = Self.formatHistoryTime(event.timestamp)
-            let verb = event.kind == .entered ? "entered" : "left"
-            lines.append("  \(when)  \(event.nickname) (\(event.socket)) \(verb)")
+            let verb = event.kind == .join ? "entered" : "left"
+            let socketText = event.socket.map { " (\($0))" } ?? ""
+            lines.append("  \(when)  \(event.nickname ?? "?")\(socketText) \(verb)")
         }
         await sendSystemReply(lines: lines)
     }

@@ -15,9 +15,10 @@ public actor ClientSession {
     let transfers: TransferRegistry
     let privateChats: PrivateChatRegistry
     let configuration: ServerConfiguration
-    /// User join/leave history sink. `nil` when the operator disabled
-    /// history (kill-switch) — recording is then skipped everywhere.
-    let userEvents: UserEventStore?
+    /// Audit-log sink (presence, transfers, auth, admin). `nil` when the
+    /// operator disabled it (master switch) — recording is then skipped
+    /// everywhere. See the `audit(_:)` helper in `ClientSession+Audit`.
+    let auditLog: AuditLog?
     let stringEncoding: String.Encoding
     let writer: @Sendable (Data) async throws -> Void
     let closer: @Sendable () async -> Void
@@ -35,6 +36,9 @@ public actor ClientSession {
     /// connection time. Surfaced in the `getClientInfoText` (303)
     /// profile rendering.
     var remoteHost: String?
+    /// Raw client IP captured at accept (no port). Logged into audit rows
+    /// only when `configuration.logIPAddresses` is on.
+    let remoteIP: String?
     /// Client-version (Hotline `versNum`) sent in the 107 login. `nil`
     /// before login.
     var clientVersion: UInt16?
@@ -104,9 +108,10 @@ public actor ClientSession {
         transfers: TransferRegistry,
         privateChats: PrivateChatRegistry,
         configuration: ServerConfiguration,
-        userEvents: UserEventStore? = nil,
+        auditLog: AuditLog? = nil,
         stringEncoding: String.Encoding,
         remoteHost: String? = nil,
+        remoteIP: String? = nil,
         isTLS: Bool = false,
         bannerBytes: Data? = nil,
         bannerKind: HeidrunCore.ServerBanner.Kind = .jpeg,
@@ -121,9 +126,10 @@ public actor ClientSession {
         self.transfers = transfers
         self.privateChats = privateChats
         self.configuration = configuration
-        self.userEvents = userEvents
+        self.auditLog = auditLog
         self.stringEncoding = stringEncoding
         self.remoteHost = remoteHost
+        self.remoteIP = remoteIP
         self.isTLS = isTLS
         self.bannerBytes = bannerBytes
         self.bannerKind = bannerKind
@@ -179,11 +185,11 @@ public actor ClientSession {
     /// drain (`HeidrunServer.stop()`); the `didRecordDeparture` guard
     /// makes the second caller a no-op so a session never logs two
     /// leaves. No-op before login (`socketID == 0`) or when history is
-    /// disabled (`userEvents == nil`).
+    /// disabled (`auditLog == nil`).
     func recordDepartureOnce() async {
         guard !didRecordDeparture, socketID != 0 else { return }
         didRecordDeparture = true
-        await userEvents?.record(.left, nickname: nickname, socket: socketID)
+        await audit(.leave)
     }
 
     /// `true` when the authenticated account has every bit in `required`
@@ -681,7 +687,7 @@ public actor ClientSession {
             emoji: emojiValue
         )
         self.socketID = assigned
-        await userEvents?.record(.entered, nickname: nick, socket: assigned)
+        await audit(.join, socket: assigned)
         serverLogger.info("user logged in", metadata: [
             "socketID": "\(assigned)",
             "nickname": "\(nick)",

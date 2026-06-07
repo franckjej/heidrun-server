@@ -311,17 +311,23 @@ struct ServerIntegrationTests {
 
     @Test("server stop records exactly one departure for everyone still connected")
     func shutdownDrainsHistory() async throws {
-        // Persistent DB so the history survives the server going down and
-        // can be read back through a fresh store on the same file.
+        // Persistent audit DB so the history survives the server going down
+        // and can be read back through a fresh AuditLog on the same file.
         let dbPath = NSTemporaryDirectory() + "heidrun-shutdown-\(UUID().uuidString).sqlite"
-        defer { try? FileManager.default.removeItem(atPath: dbPath) }
+        let auditPath = NSTemporaryDirectory() + "heidrun-shutdown-\(UUID().uuidString).audit.sqlite"
+        defer {
+            try? FileManager.default.removeItem(atPath: dbPath)
+            try? FileManager.default.removeItem(atPath: auditPath)
+        }
 
         let server = HeidrunServer(
-            configuration: ServerConfiguration(port: 0, accountStorePath: dbPath)
+            configuration: ServerConfiguration(
+                port: 0, accountStorePath: dbPath, auditDBPath: auditPath
+            )
         )
         let port = try await server.start()
         let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Ghost")
-        try await Task.sleep(for: .milliseconds(150))   // let login + entered land
+        try await Task.sleep(for: .milliseconds(150))   // let login + join land
 
         // Hard stop while Ghost is still connected — the shutdown drain
         // should record its leave even though no graceful client
@@ -329,10 +335,10 @@ struct ServerIntegrationTests {
         await server.stop()
         await client.disconnect()
 
-        let store = try UserEventStore(path: dbPath)
-        let events = await store.events(withinHours: 1)
-        let ghostLeaves = events.filter { $0.nickname == "Ghost" && $0.kind == .left }
-        #expect(events.contains { $0.nickname == "Ghost" && $0.kind == .entered })
+        let store = try AuditLog(path: auditPath, retentionDays: 90)
+        let events = await store.query(type: [.join, .leave], account: nil, withinHours: 1, limit: 500)
+        let ghostLeaves = events.filter { $0.nickname == "Ghost" && $0.kind == .leave }
+        #expect(events.contains { $0.nickname == "Ghost" && $0.kind == .join })
         #expect(ghostLeaves.count == 1)   // recorded once, not doubled
     }
 }
