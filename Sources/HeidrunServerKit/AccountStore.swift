@@ -9,8 +9,14 @@ import GRDB
 /// Password hashing rounds are configurable so tests can drop to a
 /// fast count while production uses `PasswordHash.defaultRounds`.
 public actor AccountStore {
-    public enum AccountStoreError: Swift.Error, Equatable {
+    public enum AccountStoreError: Swift.Error, Equatable, LocalizedError {
         case loginAlreadyExists(String)
+
+        public var errorDescription: String? {
+            switch self {
+            case .loginAlreadyExists(let login): return "Account already exists: \(login)"
+            }
+        }
     }
 
     private let dbQueue: DatabaseQueue

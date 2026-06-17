@@ -144,7 +144,8 @@ struct Account: AsyncParsableCommand {
             }
             guard proceed else { print("Aborted."); return }
             let removed = try await AdminCommands.delete(store: global.openAccountStore(), login: login)
-            print(removed ? "Deleted '\(login)'." : "No account '\(login)'.")
+            if !removed { throw AdminError.accountNotFound(login) }
+            print("Deleted '\(login)'.")
         }
     }
 }

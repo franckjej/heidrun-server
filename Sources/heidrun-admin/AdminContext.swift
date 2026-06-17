@@ -49,7 +49,7 @@ struct GlobalOptions: ParsableArguments {
 
     func openAuditLog() throws -> AuditLog? {
         let configuration = try resolvedConfiguration()
-        guard configuration.auditLogEnabled else { return nil }
+        guard configuration.auditLogEnabled, configuration.auditDBPath != nil else { return nil }
         return try AuditLog(
             path: configuration.auditDBPath,
             retentionDays: configuration.auditRetentionDays

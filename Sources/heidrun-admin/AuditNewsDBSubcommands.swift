@@ -13,7 +13,7 @@ struct Audit: AsyncParsableCommand {
 
     func run() async throws {
         guard let log = try global.openAuditLog() else {
-            print("Audit log is disabled in this configuration."); return
+            print("No audit log to query: it is disabled or no audit database path is configured (set HEIDRUN_DB_PATH / HEIDRUN_AUDIT_DB_PATH, or pass --config)."); return
         }
         var kinds: [AuditEvent.Kind]?
         if let type {
