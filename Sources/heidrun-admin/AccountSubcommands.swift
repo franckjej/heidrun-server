@@ -120,8 +120,8 @@ struct Account: AsyncParsableCommand {
             let updated = try await AdminCommands.editPrivileges(
                 store: store, login: login,
                 grant: grantBits, revoke: revokeBits, set: setBits)
-            print("Privileges for '\(login)': "
-                  + PrivilegeNames.names(in: UserPrivileges(rawValue: updated.permissions)).joined(separator: ", "))
+            let names = PrivilegeNames.names(in: UserPrivileges(rawValue: updated.permissions))
+            print("Privileges for '\(login)': " + (names.isEmpty ? "(none)" : names.joined(separator: ", ")))
         }
 
         private func parsePrivileges(_ csv: String?) throws -> UserPrivileges {
@@ -152,7 +152,10 @@ struct Account: AsyncParsableCommand {
 /// Resolve a password from --password, --password-stdin, or an interactive
 /// no-echo prompt, in that order.
 func resolvePassword(explicit: String?, fromStdin: Bool, prompt: String) throws -> String {
-    if let explicit { return explicit }
+    if let explicit {
+        if explicit.isEmpty { throw ValidationError("Empty password.") }
+        return explicit
+    }
     let value = fromStdin ? AdminIO.readPasswordFromStdin() : AdminIO.readPassword(prompt: prompt)
     if value.isEmpty { throw ValidationError("Empty password.") }
     return value

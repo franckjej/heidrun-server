@@ -3,8 +3,14 @@ import HeidrunCore
 
 /// Errors surfaced by the admin command bodies. The executable maps these
 /// to a stderr message + non-zero exit.
-public enum AdminError: Swift.Error, Equatable {
+public enum AdminError: Swift.Error, Equatable, LocalizedError {
     case accountNotFound(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .accountNotFound(let login): return "Account not found: \(login)"
+        }
+    }
 }
 
 /// Testable bodies behind the `heidrun-admin` CLI. Pure logic over the
