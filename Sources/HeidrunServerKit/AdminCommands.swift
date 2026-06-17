@@ -61,4 +61,30 @@ public enum AdminCommands {
     public static func delete(store: AccountStore, login: String) async throws -> Bool {
         try await store.delete(login: login)
     }
+
+    /// Apply privilege edits. When `set` is non-nil it replaces the whole
+    /// mask; otherwise the result is `(current | grant) & ~revoke`.
+    @discardableResult
+    public static func editPrivileges(
+        store: AccountStore, login: String,
+        grant: UserPrivileges, revoke: UserPrivileges, set: UserPrivileges?
+    ) async throws -> Account {
+        guard let current = try await store.get(login: login) else {
+            throw AdminError.accountNotFound(login)
+        }
+        let newMask: UserPrivileges
+        if let set {
+            newMask = set
+        } else {
+            var working = UserPrivileges(rawValue: current.permissions)
+            working.formUnion(grant)
+            working.subtract(revoke)
+            newMask = working
+        }
+        guard let updated = try await store.update(
+            login: login, nickname: nil, iconID: nil,
+            permissions: newMask.rawValue, newPassword: nil
+        ) else { throw AdminError.accountNotFound(login) }
+        return updated
+    }
 }
