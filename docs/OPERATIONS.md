@@ -342,10 +342,50 @@ untouched.
 schema is one `audit_events` table indexed on `ts`, `(type, ts)`, and
 `(account, ts)`.
 
+## Local administration (`heidrun-admin`)
+
+`heidrun-admin` administers the server's SQLite/news state directly — no
+running server required. It reads the same config the server does
+(`HEIDRUN_CONFIG` TOML + env), so by default it targets the same DB. Both
+binaries ship in the same image; run it via `docker compose exec`:
+
+```bash
+docker compose exec heidrun-server heidrun-admin db info
+docker compose exec heidrun-server heidrun-admin account list
+```
+
+Common recipes:
+
+```bash
+# Provision an account (password read from stdin, not argv):
+printf 's3cret\n' | heidrun-admin account create bob --name Bob --password-stdin --preset guest
+
+# Recover a locked-out admin (reset password + re-grant rights):
+printf 'newpass\n' | heidrun-admin account passwd admin --password-stdin
+heidrun-admin account privileges admin --grant createUser,deleteUser,modifyUser,disconnectUsers
+
+# Inspect what an account can do:
+heidrun-admin account privileges bob --list
+
+# Offline audit query (same filters as the /audit chat command):
+heidrun-admin audit --type auth --user bob --since 7d
+
+# One-shot news wipe:
+heidrun-admin news reset all --yes
+```
+
+> Global options (`--config`, `--db`, `--news-path`, `--files-root`) follow
+> the subcommand (e.g. `heidrun-admin account list --db /path`); without them
+> the tool resolves the DB from `HEIDRUN_CONFIG`/env exactly like the server.
+
+> Concurrency: the tool and a live server can open the same SQLite file at
+> once (WAL). Account changes take effect on the next login / account
+> fetch — they don't retroactively change an already-connected session's
+> privileges.
+
 ## Out of scope (v1)
 
 Deferred to v1.5:
 
 - Persistent file icons (HFS type/creator + comments now persist; icon blobs are still deferred)
-- Admin CLI tool (`heidrun-server-admin`)
 - launchd / systemd integration tests
