@@ -347,11 +347,12 @@ schema is one `audit_events` table indexed on `ts`, `(type, ts)`, and
 `heidrun-admin` administers the server's SQLite/news state directly — no
 running server required. It reads the same config the server does
 (`HEIDRUN_CONFIG` TOML + env), so by default it targets the same DB. Both
-binaries ship in the same image; run it via `docker compose exec`:
+binaries ship in the same image; run it via `docker compose exec` (the
+compose **service** is named `heidrun`; add `-T` for piped/scripted use):
 
 ```bash
-docker compose exec heidrun-server heidrun-admin db info
-docker compose exec heidrun-server heidrun-admin account list
+docker compose exec heidrun heidrun-admin db info
+docker compose exec heidrun heidrun-admin account list
 ```
 
 Common recipes:
