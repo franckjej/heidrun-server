@@ -64,15 +64,23 @@ COPY Sources ./Sources
 COPY Tests ./Tests
 
 # Single RUN: resolve + build + install. heidrun-protocol is fetched
-# anonymously over HTTPS — the repo is public.
+# anonymously over HTTPS — the repo is public. Both the server and the
+# `heidrun-admin` CLI ship in the image (the second build reuses the
+# shared .build cache, so it only links the extra executable).
 RUN --mount=type=cache,target=/root/.cache/org.swift.swiftpm \
     --mount=type=cache,target=/src/.build \
     swift build \
       --configuration release \
       --product HeidrunServer \
+ && swift build \
+      --configuration release \
+      --product heidrun-admin \
  && install -m 0755 \
       .build/release/HeidrunServer \
-      /usr/local/bin/heidrun-server
+      /usr/local/bin/heidrun-server \
+ && install -m 0755 \
+      .build/release/heidrun-admin \
+      /usr/local/bin/heidrun-admin
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Runtime stage
@@ -100,6 +108,11 @@ RUN useradd --system --home-dir /var/lib/heidrun --shell /usr/sbin/nologin heidr
  && install -d -o heidrun -g heidrun /etc/heidrun-server
 
 COPY --from=build /usr/local/bin/heidrun-server /usr/local/bin/heidrun-server
+# The offline admin CLI ships alongside the server so operators can run
+# `docker compose exec heidrun-server heidrun-admin …` (see docs/OPERATIONS.md).
+# It reuses HEIDRUN_CONFIG/HEIDRUN_DB_PATH (set below), so it targets the
+# same DB as the running server with no extra flags.
+COPY --from=build /usr/local/bin/heidrun-admin /usr/local/bin/heidrun-admin
 COPY heidrun-server.example.toml /etc/heidrun-server/config.toml
 
 # Drop the build-id + build-date stamps from the git-info stage into
