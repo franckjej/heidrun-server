@@ -102,14 +102,25 @@ RUN apt-get update \
 # itself must be heidrun-owned so a fresh named volume mounted there
 # inherits writable permissions for the unprivileged user — otherwise
 # GRDB can't create heidrun.sqlite.
-RUN useradd --system --home-dir /var/lib/heidrun --shell /usr/sbin/nologin heidrun \
+#
+# The UID/GID are PINNED (not kernel-assigned) so a host bind-mount can be
+# chown'd to a known, build-stable id and the native `heidrun-admin` CLI can
+# run on the host as that same id against the same files. Override at build
+# time with `--build-arg HEIDRUN_UID=… --build-arg HEIDRUN_GID=…`.
+# See docs/native-host-admin.md.
+ARG HEIDRUN_UID=1979
+ARG HEIDRUN_GID=1979
+RUN groupadd --system --gid "$HEIDRUN_GID" heidrun \
+ && useradd --system --uid "$HEIDRUN_UID" --gid "$HEIDRUN_GID" \
+        --home-dir /var/lib/heidrun --shell /usr/sbin/nologin heidrun \
  && install -d -o heidrun -g heidrun /var/lib/heidrun \
  && install -d -o heidrun -g heidrun /var/lib/heidrun/files \
  && install -d -o heidrun -g heidrun /etc/heidrun-server
 
 COPY --from=build /usr/local/bin/heidrun-server /usr/local/bin/heidrun-server
 # The offline admin CLI ships alongside the server so operators can run
-# `docker compose exec heidrun-server heidrun-admin …` (see docs/OPERATIONS.md).
+# `docker compose exec heidrun heidrun-admin …` (see docs/OPERATIONS.md),
+# or run it natively on the host against a bind mount (docs/native-host-admin.md).
 # It reuses HEIDRUN_CONFIG/HEIDRUN_DB_PATH (set below), so it targets the
 # same DB as the running server with no extra flags.
 COPY --from=build /usr/local/bin/heidrun-admin /usr/local/bin/heidrun-admin

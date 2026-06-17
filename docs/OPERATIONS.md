@@ -355,6 +355,10 @@ docker compose exec heidrun heidrun-admin db info
 docker compose exec heidrun heidrun-admin account list
 ```
 
+To run `heidrun-admin` **natively on the host** (no `docker compose exec`)
+against a bind-mounted deployment, see
+[`native-host-admin.md`](native-host-admin.md).
+
 Common recipes:
 
 ```bash

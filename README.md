@@ -77,7 +77,7 @@ The annotated source of truth for the config surface is [`heidrun-server.example
 | `HEIDRUN_BANNER_PATH` / `HEIDRUN_BANNER_KIND` | _(unset)_ / `jpeg` | Image file delivered via `downloadBanner` (transID 212) |
 | `HEIDRUN_LOG_LEVEL` | `info` | swift-log level: `trace` / `debug` / `info` / … / `critical` |
 
-Operator depth (TLS / Let's Encrypt deploy hooks, ufw-docker, bootstrap admin permission upgrade, tracker debugging, full env reference) lives in [`docs/OPERATIONS.md`](docs/OPERATIONS.md).
+Operator depth (TLS / Let's Encrypt deploy hooks, ufw-docker, bootstrap admin permission upgrade, tracker debugging, full env reference) lives in [`docs/OPERATIONS.md`](docs/OPERATIONS.md). To run the full-featured `heidrun-admin` CLI natively on the host against a bind-mounted deployment, see [`docs/native-host-admin.md`](docs/native-host-admin.md).
 
 ## Slash commands
 

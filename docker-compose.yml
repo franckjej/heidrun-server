@@ -51,6 +51,17 @@ services:
       # below) the file tree all live in this named volume.
       - heidrun-data:/var/lib/heidrun
 
+      # --- Alternative: bind-mount the whole data dir to the host ---
+      # Replace the named volume above with a host path so the DB,
+      # audit log, news JSON, and files tree sit on the host and the
+      # native `heidrun-admin` CLI can run on the host with the FULL
+      # command set (list/audit/news/db). chown the host dir to the
+      # image's pinned heidrun UID/GID (1979 by default — see the
+      # Dockerfile `ARG HEIDRUN_UID`). Full recipe incl. migration
+      # from the named volume: docs/native-host-admin.md
+      #
+      #   - ./_data/heidrun_production:/var/lib/heidrun
+
       # --- Optional: hook up an existing files tree on the host ---
       #
       # Bind-mount a host directory (e.g. a multi-TB RAID at
@@ -60,11 +71,9 @@ services:
       # up to the server as-is, and `down`/`up` cycles never touch it.
       #
       # Before the first `up`, make /home/files readable + writable by
-      # the container's `heidrun` user (UID/GID is whatever
-      # `useradd --system` picked at image-build time):
-      #   HEIDRUN_UID=$(docker exec heidrun-server id -u heidrun)
-      #   HEIDRUN_GID=$(docker exec heidrun-server id -g heidrun)
-      #   sudo chown -R "$HEIDRUN_UID:$HEIDRUN_GID" /home/files
+      # the container's `heidrun` user — the image pins UID/GID 1979
+      # (Dockerfile `ARG HEIDRUN_UID`):
+      #   sudo chown -R 1979:1979 /home/files
       #   sudo chmod -R u+rwX,g+rwX /home/files
       #
       # SAFETY: a logged-in user with the .deleteFiles / .deleteFolders
