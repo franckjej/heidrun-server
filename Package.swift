@@ -43,6 +43,7 @@ let package = Package(
             name: "heidrun-admin",
             dependencies: [
                 "HeidrunServerKit",
+                .product(name: "HeidrunCore", package: "heidrun-protocol"),
                 .product(name: "ArgumentParser", package: "swift-argument-parser")
             ]
         ),
