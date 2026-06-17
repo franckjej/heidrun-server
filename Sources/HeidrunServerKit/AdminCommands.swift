@@ -87,4 +87,50 @@ public enum AdminCommands {
         ) else { throw AdminError.accountNotFound(login) }
         return updated
     }
+
+    // MARK: - Audit
+
+    /// Offline audit query — thin pass-through to `AuditLog.query`, oldest
+    /// first. The executable resolves `kinds`/`hours` via `AuditQueryParsing`.
+    public static func auditEvents(
+        log: AuditLog, kinds: [AuditEvent.Kind]?, account: String?,
+        hours: Int, limit: Int
+    ) async -> [AuditEvent] {
+        await log.query(type: kinds, account: account, withinHours: hours, limit: limit)
+    }
+
+    // MARK: - News
+
+    /// One-shot wipe of the selected news store(s) at `path`, persisting the
+    /// empty snapshot. No-op (in-memory only) when `path` is nil.
+    public static func resetNews(path: String?, scope: NewsResetScope) async {
+        let tree = NewsTree(persistencePath: path)
+        await tree.reset(scope)
+    }
+
+    // MARK: - DB info
+
+    public struct DBInfo: Sendable, Codable, Equatable {
+        public var accountCount: Int
+        public var accountStorePath: String?
+        public var auditDBPath: String?
+        public var auditLogEnabled: Bool
+        public var newsStatePath: String?
+        public var newsMode: String
+        public var filesRootPath: String?
+    }
+
+    public static func dbInfo(
+        store: AccountStore, configuration: ServerConfiguration
+    ) async throws -> DBInfo {
+        DBInfo(
+            accountCount: try await store.count(),
+            accountStorePath: configuration.accountStorePath,
+            auditDBPath: configuration.auditDBPath,
+            auditLogEnabled: configuration.auditLogEnabled,
+            newsStatePath: configuration.newsStatePath,
+            newsMode: configuration.newsMode.rawValue,
+            filesRootPath: configuration.filesRootPath
+        )
+    }
 }
