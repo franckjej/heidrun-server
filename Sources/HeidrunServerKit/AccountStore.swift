@@ -163,6 +163,33 @@ public actor AccountStore {
         }
     }
 
+    /// All accounts, ordered by login. Snapshots every row to plain
+    /// `Account` values — used by the admin CLI's `account list`.
+    public func list() throws -> [Account] {
+        try dbQueue.read { database in
+            let rows = try Row.fetchAll(
+                database,
+                sql: """
+                SELECT id, login, nickname, password_hash, icon_id, permissions, created_at, updated_at
+                FROM accounts ORDER BY login ASC
+                """
+            )
+            return rows.map { row in
+                let storedPermissions: Int64 = row["permissions"]
+                return Account(
+                    id: row["id"],
+                    login: row["login"],
+                    nickname: row["nickname"],
+                    passwordHash: row["password_hash"],
+                    iconID: UInt16(clamping: row["icon_id"] as Int),
+                    permissions: UInt64(bitPattern: storedPermissions),
+                    createdAt: Date(timeIntervalSince1970: TimeInterval(row["created_at"] as Int)),
+                    updatedAt: Date(timeIntervalSince1970: TimeInterval(row["updated_at"] as Int))
+                )
+            }
+        }
+    }
+
     /// If the accounts table is empty, seed a single account with the
     /// given credentials. Idempotent — called from server startup so
     /// fresh DBs come up with an admin account ready to log in. Returns
