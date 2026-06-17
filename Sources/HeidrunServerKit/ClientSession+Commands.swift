@@ -410,12 +410,9 @@ extension ClientSession {
         return AuditQuery(kinds: kinds, account: account, hours: max(1, hours), limit: limit)
     }
 
-    /// `Nh` / `Nd` → hours. Bare integer treated as hours.
+    /// `Nh` / `Nd` → hours. Delegates to `AuditQueryParsing` (single source of truth).
     static func parseSince(_ value: String) -> Int? {
-        let lower = value.lowercased()
-        if lower.hasSuffix("d"), let days = Int(lower.dropLast()) { return max(1, days) * 24 }
-        if lower.hasSuffix("h"), let hrs = Int(lower.dropLast()) { return max(1, hrs) }
-        return Int(lower).map { max(1, $0) }
+        AuditQueryParsing.hours(fromSince: value)
     }
 
     /// `/audit [--type …] [--user …] [--since Nh|Nd] [--limit N]` (+ aliases
