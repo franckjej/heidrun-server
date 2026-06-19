@@ -5,6 +5,21 @@ your dockerized HeidrunServer — with the complete command set (`account`,
 `audit`, `news`, `db`), no `docker compose exec`, and no protocol/network
 client.
 
+## Prerequisites
+
+Building `heidrun-admin` on the host needs a **Swift 6.2+ toolchain** and the
+**system SQLite headers** — GRDB compiles against `sqlite3.h`. The Docker
+image installs these for you; a native build does not, so install them first
+or `swift build` fails with `'sqlite3.h' file not found`:
+
+```bash
+# Debian / Ubuntu
+sudo apt-get update && sudo apt-get install -y libsqlite3-dev   # build: headers
+#                                              libsqlite3-0      # runtime (usually present)
+# Fedora / RHEL:  sudo dnf install sqlite-devel
+# Alpine:         sudo apk add sqlite-dev
+```
+
 ## Why this works
 
 `heidrun-admin` is **file-direct**: it administers the server by opening the
