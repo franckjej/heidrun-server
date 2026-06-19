@@ -107,7 +107,8 @@ extension ClientSession {
     }
 
     /// Handle `createNewsBundle` (381): create a folder named `fileName`
-    /// under the addressed `newsPath`. No-reply per HEClient.m.
+    /// under the addressed `newsPath`. Replies success/error (mhxd does;
+    /// HEClient.m's `kNoReply` only meant the legacy *client* ignored it).
     func handleCreateNewsBundle(header: PacketHeader, fields: [PacketField]) async {
         guard hasPrivilege(.createNewsBundles) else {
             await denyPrivilege(taskNumber: header.taskNumber, transactionID: 381, privilege: "createNewsBundles")
@@ -122,7 +123,8 @@ extension ClientSession {
     }
 
     /// Handle `createNewsCategory` (382): create a category named
-    /// `newsCategoryName` under the addressed `newsPath`. No-reply.
+    /// `newsCategoryName` under the addressed `newsPath`. Replies
+    /// success/error (see `createNewsBundle`).
     func handleCreateNewsCategory(header: PacketHeader, fields: [PacketField]) async {
         guard hasPrivilege(.createCategories) else {
             await denyPrivilege(taskNumber: header.taskNumber, transactionID: 382, privilege: "createCategories")
@@ -144,8 +146,25 @@ extension ClientSession {
     ) async {
         let path = newsPath(from: fields)
         guard let name = fields.string(nameKey, encoding: stringEncoding),
-              !name.isEmpty else { return }
-        _ = await news.insertBundle(at: path, name: name, kind: kind)
+              !name.isEmpty else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: header.transactionID,
+                message: "Missing name"))
+            return
+        }
+        // Reply success/failure like postNewsThread. The de-facto standard
+        // server (mhxd's rcv_news_mkdir / rcv_news_mkcategory) replies on
+        // success; an await-based client otherwise hangs forever.
+        if await news.insertBundle(at: path, name: name, kind: kind) {
+            try? await writer(PacketEncoder.emptyReply(
+                taskNumber: header.taskNumber, transactionID: header.transactionID))
+        } else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber,
+                transactionID: header.transactionID,
+                message: "Could not create news item"))
+        }
     }
 
     /// Decode the `.newsPath` (325) field into `[String]`. Defaults to

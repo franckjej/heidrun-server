@@ -184,6 +184,107 @@ struct NewsDeleteTests {
     }
 }
 
+@Suite("news mutation replies (380 / 381 / 382 / 411)", .serialized)
+struct NewsMutationReplyTests {
+
+    private static let configuration = ServerConfiguration(
+        port: 0,
+        bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+            login: "admin", password: "admin", nickname: "Admin"
+        )
+    )
+
+    /// Connect + login as admin with a `PacketObserver` recording every
+    /// inbound packet, then settle so the post-login pushes land. Returns
+    /// the live client and its recorder.
+    private static func loginRecording(port: UInt16) async throws
+        -> (client: any HotlineClient, recorder: PacketRecorder) {
+        let recorder = PacketRecorder()
+        let observer = PacketObserver { direction, header, fields in
+            guard direction == .inbound else { return }
+            Task { await recorder.record(header: header, fields: fields) }
+        }
+        let settings = ConnectionSettings(
+            name: "loopback", address: "127.0.0.1", port: port,
+            nickname: "Admin", login: "admin")
+        let client = try await HotlineNetworkClient.connect(
+            settings: settings, packetObserver: observer)
+        try await client.login(name: "admin", password: "admin", nickname: "Admin", icon: 0)
+        try await Task.sleep(for: .milliseconds(250))
+        return (client, recorder)
+    }
+
+    @Test("createNewsBundle (381) draws a reply — the server must not stay silent")
+    func createBundleReplies() async throws {
+        try await ServerTestHelpers.withRunningServer(configuration: Self.configuration) { _, port in
+            let (client, recorder) = try await Self.loginRecording(port: port)
+            let before = await recorder.replies().count
+
+            try await client.createNewsBundle(at: RemotePath(), name: "Announcements", isCategory: false)
+            try await Task.sleep(for: .milliseconds(200))
+
+            let after = await recorder.replies().count
+            #expect(after > before, "server must reply to createNewsBundle (381), like mhxd's rcv_news_mkdir")
+            await client.disconnect()
+        }
+    }
+
+    @Test("createNewsCategory (382) draws a reply")
+    func createCategoryReplies() async throws {
+        try await ServerTestHelpers.withRunningServer(configuration: Self.configuration) { _, port in
+            let (client, recorder) = try await Self.loginRecording(port: port)
+            let before = await recorder.replies().count
+
+            try await client.createNewsBundle(at: RemotePath(), name: "Topics", isCategory: true)
+            try await Task.sleep(for: .milliseconds(200))
+
+            let after = await recorder.replies().count
+            #expect(after > before, "server must reply to createNewsCategory (382), like mhxd's rcv_news_mkcategory")
+            await client.disconnect()
+        }
+    }
+
+    @Test("deleteNewsBundle (380) draws a reply")
+    func deleteBundleReplies() async throws {
+        try await ServerTestHelpers.withRunningServer(configuration: Self.configuration) { _, port in
+            let (client, recorder) = try await Self.loginRecording(port: port)
+            try await client.createNewsBundle(at: RemotePath(), name: "Scratch", isCategory: false)
+            try await Task.sleep(for: .milliseconds(100))
+            let before = await recorder.replies().count
+
+            try await client.deleteNewsBundle(at: RemotePath(components: ["Scratch"]))
+            try await Task.sleep(for: .milliseconds(200))
+
+            let after = await recorder.replies().count
+            #expect(after > before, "server must reply to deleteNewsBundle (380), like mhxd's rcv_news_delete")
+            await client.disconnect()
+        }
+    }
+
+    @Test("deleteNewsThread (411) draws a reply")
+    func deleteThreadReplies() async throws {
+        try await ServerTestHelpers.withRunningServer(configuration: Self.configuration) { _, port in
+            let (client, recorder) = try await Self.loginRecording(port: port)
+            try await client.createNewsBundle(at: RemotePath(), name: "Board", isCategory: true)
+            let boardPath = RemotePath(components: ["Board"])
+            try await client.postNewsThread(
+                at: boardPath, parentThreadID: 0, title: "First",
+                type: "application/x-trh-mime-text", body: "hi")
+            try await Task.sleep(for: .milliseconds(100))
+            let threads = try await client.fetchNewsThreads(at: boardPath)
+            let articleID = try #require(threads.first?.threadID)
+            let before = await recorder.replies().count
+
+            try await client.deleteNewsThread(at: boardPath, threadID: articleID, cascade: false)
+            try await Task.sleep(for: .milliseconds(200))
+
+            let after = await recorder.replies().count
+            #expect(after > before, "server must reply to deleteNewsThread (411), like mhxd's rcv_news_delete_thread")
+            await client.disconnect()
+        }
+    }
+}
+
 @Suite("ping (500)", .serialized)
 struct PingTests {
 

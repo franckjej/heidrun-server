@@ -60,6 +60,12 @@ actor PacketRecorder {
     func inbound(transactionID: UInt16) -> [(header: PacketHeader, fields: [PacketField])] {
         packets.filter { $0.header.transactionID == transactionID }
     }
+    /// All reply packets seen so far (classID 1, per the reply-header
+    /// convention). Replies zero their transaction type, so they can't be
+    /// filtered by transactionID — count them by class instead.
+    func replies() -> [(header: PacketHeader, fields: [PacketField])] {
+        packets.filter { $0.header.classID == 1 }
+    }
 }
 
 @Suite("Server integration", .serialized)

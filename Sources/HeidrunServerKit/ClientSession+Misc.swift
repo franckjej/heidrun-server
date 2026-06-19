@@ -52,20 +52,28 @@ extension ClientSession {
     }
 
     /// Handle `deleteNewsBundle` (380): drop the addressed folder or
-    /// category. No-reply per the legacy client.
+    /// category. Replies success/error (mhxd's `rcv_news_delete` does;
+    /// the legacy client's `kNoReply` only meant it ignored the reply).
     func handleDeleteNewsBundle(header: PacketHeader, fields: [PacketField]) async {
         guard hasPrivilege(.deleteNewsBundles) else {
             await denyPrivilege(taskNumber: header.taskNumber, transactionID: 380, privilege: "deleteNewsBundles")
             return
         }
         let path = newsPathComponents(from: fields)
-        guard !path.isEmpty else { return }
-        _ = await news.removeBundle(at: path)
+        if !path.isEmpty, await news.removeBundle(at: path) {
+            try? await writer(PacketEncoder.emptyReply(
+                taskNumber: header.taskNumber, transactionID: 380))
+        } else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber, transactionID: 380,
+                message: "Could not delete news item"))
+        }
     }
 
     /// Handle `deleteNewsThread` (411): drop one article from a
     /// category. `deleteAll` (337) cascade is not modeled yet — the
-    /// single-thread delete covers the common case. No-reply.
+    /// single-thread delete covers the common case. Replies success/error
+    /// (mhxd's `rcv_news_delete_thread` does).
     func handleDeleteNewsThread(header: PacketHeader, fields: [PacketField]) async {
         guard hasPrivilege(.deleteArticles) else {
             await denyPrivilege(taskNumber: header.taskNumber, transactionID: 411, privilege: "deleteArticles")
@@ -73,8 +81,14 @@ extension ClientSession {
         }
         let path = newsPathComponents(from: fields)
         let articleID = Int(fields.uint16(.newsArticleID) ?? 0)
-        guard !path.isEmpty, articleID > 0 else { return }
-        _ = await news.removePost(at: path, articleID: articleID)
+        if !path.isEmpty, articleID > 0, await news.removePost(at: path, articleID: articleID) {
+            try? await writer(PacketEncoder.emptyReply(
+                taskNumber: header.taskNumber, transactionID: 411))
+        } else {
+            try? await writer(PacketEncoder.errorReply(
+                taskNumber: header.taskNumber, transactionID: 411,
+                message: "Could not delete news thread"))
+        }
     }
 
     /// Handle `deleteTransfer` (214): the client gave up on a pending
