@@ -451,9 +451,14 @@ public actor HeidrunServer {
                 let prelude: EventLoopFuture<Void>
                 let isTLS: Bool
                 if let sslContext {
-                    prelude = childChannel.pipeline.addHandler(
-                        NIOSSLServerHandler(context: sslContext)
-                    )
+                    // Add via syncOperations (runs on the child channel's
+                    // event loop) — NIOSSLServerHandler isn't Sendable, so the
+                    // async addHandler(_:) warns under stricter NIO versions.
+                    prelude = childChannel.eventLoop.makeCompletedFuture {
+                        try childChannel.pipeline.syncOperations.addHandler(
+                            NIOSSLServerHandler(context: sslContext)
+                        )
+                    }
                     isTLS = true
                 } else {
                     prelude = childChannel.eventLoop.makeSucceededVoidFuture()
@@ -503,9 +508,13 @@ public actor HeidrunServer {
             .childChannelInitializer { childChannel in
                 let prelude: EventLoopFuture<Void>
                 if let sslContext {
-                    prelude = childChannel.pipeline.addHandler(
-                        NIOSSLServerHandler(context: sslContext)
-                    )
+                    // syncOperations: NIOSSLServerHandler isn't Sendable (see
+                    // makeControlBootstrap).
+                    prelude = childChannel.eventLoop.makeCompletedFuture {
+                        try childChannel.pipeline.syncOperations.addHandler(
+                            NIOSSLServerHandler(context: sslContext)
+                        )
+                    }
                 } else {
                     prelude = childChannel.eventLoop.makeSucceededVoidFuture()
                 }
