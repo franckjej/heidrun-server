@@ -25,7 +25,15 @@ struct GlobalOptions: ParsableArguments {
 
     /// Build the resolved configuration. CLI overrides win over file/env.
     func resolvedConfiguration() throws -> ServerConfiguration {
-        let environment = ProcessInfo.processInfo.environment
+        var environment = ProcessInfo.processInfo.environment
+        // `--db` drives the same sibling derivation as HEIDRUN_DB_PATH — the
+        // audit log (`<db>.audit.sqlite`) and news JSON (`<db>.news.json`)
+        // next to the accounts DB — so `audit`/`news` commands find them
+        // instead of falling back to in-memory. Feeding it through the
+        // resolver (rather than only overriding accountStorePath afterwards)
+        // is what makes that derivation fire. An explicit env / config entry
+        // still wins inside `resolved(environment:)`.
+        if let db { environment["HEIDRUN_DB_PATH"] = db }
         let file: ServerConfigurationFile
         if let path = config ?? environment["HEIDRUN_CONFIG"] {
             file = try ServerConfigurationFile.load(from: path)
