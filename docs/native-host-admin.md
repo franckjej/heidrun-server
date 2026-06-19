@@ -115,27 +115,32 @@ image: `docker compose cp heidrun:/usr/local/bin/heidrun-admin /usr/local/bin/`.
 ## 4. Administer from the host
 
 Point `--db` at the bind path (the audit log and news JSON are resolved as
-siblings automatically), and run as UID 1979 (or root) so file permissions
-line up with the container:
+siblings automatically). **Just run it as root** — `heidrun-admin`
+automatically drops to the owner of the database (e.g. UID 1979), so files
+it creates stay owned by the server's user instead of root:
 
 ```bash
 DB=./_data/heidrun_production/heidrun.sqlite
 
-sudo -u '#1979' heidrun-admin db info --db "$DB"
-sudo -u '#1979' heidrun-admin account list --db "$DB"
-sudo -u '#1979' heidrun-admin account create bob --name Bob --password-stdin --preset guest --db "$DB"
-sudo -u '#1979' heidrun-admin audit --type auth --since 7d --db "$DB"
+sudo heidrun-admin db info --db "$DB"
+sudo heidrun-admin account list --db "$DB"
+sudo heidrun-admin account create bob --name Bob --password-stdin --preset guest --db "$DB"
+sudo heidrun-admin audit --type auth --since 7d --db "$DB"
 ```
 
-Tip: set `HEIDRUN_DB_PATH=$DB` (and run as 1979) to drop the `--db` flag, or
-point `--config` at the same TOML the server uses. Every command supports
+`sudo -u '#1979' heidrun-admin …` (explicitly as 1979) also works and is
+equivalent. Tip: set `HEIDRUN_DB_PATH=$DB` to drop the `--db` flag, or point
+`--config` at the same TOML the server uses. Every command supports
 `--help`; read commands also support `--json`.
 
 ## Caveats
 
 - **Permissions.** The data files are owned by UID/GID 1979. Run the native
-  CLI as that id (`sudo -u '#1979' …`) or as root. Running as another user
-  fails to open the DB.
+  CLI as root (it auto-drops to the DB's owner) or explicitly as that id
+  (`sudo -u '#1979' …`). Running as an unrelated non-root user fails to open
+  the DB. The auto-drop is why running as bare root is safe here — without
+  it, root would create root-owned `-wal`/`-shm` files that lock the
+  container out of its own database.
 - **Live concurrency.** SQLite WAL lets the host CLI and the running server
   share the accounts/audit DBs safely. Account changes take effect on the
   next login / account fetch — they don't retroactively alter an
