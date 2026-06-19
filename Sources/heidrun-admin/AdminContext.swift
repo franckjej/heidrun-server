@@ -66,6 +66,20 @@ struct GlobalOptions: ParsableArguments {
         if let db { configuration.accountStorePath = db }
         if let newsPath { configuration.newsStatePath = newsPath }
         if let filesRoot { configuration.filesRootPath = filesRoot }
+        // Display convenience: when nothing set a files root, fall back to the
+        // `files` dir next to the DB if it exists, so `db info` reports the
+        // real vault. Admin-only; the server's own resolution is untouched.
+        if let derivedFilesRoot = AdminDefaultConfig.conventionFilesRoot(
+            dbPath: configuration.accountStorePath,
+            currentFilesRoot: configuration.filesRootPath,
+            directoryExists: { path in
+                var isDirectory: ObjCBool = false
+                return fileManager.fileExists(atPath: path, isDirectory: &isDirectory)
+                    && isDirectory.boolValue
+            }
+        ) {
+            configuration.filesRootPath = derivedFilesRoot
+        }
         try Self.dropPrivilegesToDataOwnerIfRoot(dataPath: configuration.accountStorePath)
         return configuration
     }

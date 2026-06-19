@@ -39,4 +39,22 @@ public enum AdminDefaultConfig {
         if conventionDBExists { return .conventionDB(conventionDBPath) }
         return .none
     }
+
+    /// Files-root convention: the `files` directory next to the accounts DB.
+    /// Returned only when no `files_root` is set AND that directory exists
+    /// (probe supplied by the caller). Display-only — lets `db info` show the
+    /// real vault without changing the server's own resolution. `nil` means
+    /// "leave files root as it is".
+    public static func conventionFilesRoot(
+        dbPath: String?,
+        currentFilesRoot: String?,
+        directoryExists: (String) -> Bool
+    ) -> String? {
+        guard currentFilesRoot == nil, let dbPath else { return nil }
+        let candidate = URL(fileURLWithPath: dbPath)
+            .deletingLastPathComponent()
+            .appendingPathComponent("files")
+            .path
+        return directoryExists(candidate) ? candidate : nil
+    }
 }

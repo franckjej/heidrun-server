@@ -54,4 +54,40 @@ struct AdminDefaultConfigTests {
             conventionDBExists: false)
         #expect(source == .none)
     }
+
+    @Test("files-root convention is the existing 'files' dir next to the DB")
+    func filesRootConventionDerived() {
+        let derived = AdminDefaultConfig.conventionFilesRoot(
+            dbPath: "/srv/heidrun/_data/heidrun.sqlite",
+            currentFilesRoot: nil,
+            directoryExists: { $0 == "/srv/heidrun/_data/files" })
+        #expect(derived == "/srv/heidrun/_data/files")
+    }
+
+    @Test("files-root convention yields nil when files_root is already set")
+    func filesRootConventionRespectsExplicit() {
+        let derived = AdminDefaultConfig.conventionFilesRoot(
+            dbPath: "/srv/heidrun/_data/heidrun.sqlite",
+            currentFilesRoot: "/elsewhere/files",
+            directoryExists: { _ in true })
+        #expect(derived == nil)
+    }
+
+    @Test("files-root convention yields nil when the dir doesn't exist")
+    func filesRootConventionMissingDir() {
+        let derived = AdminDefaultConfig.conventionFilesRoot(
+            dbPath: "/srv/heidrun/_data/heidrun.sqlite",
+            currentFilesRoot: nil,
+            directoryExists: { _ in false })
+        #expect(derived == nil)
+    }
+
+    @Test("files-root convention yields nil with no DB path")
+    func filesRootConventionNoDB() {
+        let derived = AdminDefaultConfig.conventionFilesRoot(
+            dbPath: nil,
+            currentFilesRoot: nil,
+            directoryExists: { _ in true })
+        #expect(derived == nil)
+    }
 }
