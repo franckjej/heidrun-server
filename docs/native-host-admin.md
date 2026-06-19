@@ -92,17 +92,25 @@ docker compose exec heidrun heidrun-admin db info    # verify your account count
 
 ## 3. Build the native `heidrun-admin` on the host
 
-Requires a Swift 6.2+ toolchain. On Linux also install the SQLite headers
-(`libsqlite3-dev` to build, `libsqlite3-0` at runtime).
+See [Prerequisites](#prerequisites) for the toolchain + SQLite headers.
+
+Build with **`--static-swift-stdlib`**: you run the admin as UID 1979 via
+`sudo -u`, which resets the environment, so a dynamically-linked binary
+fails at startup with `libswiftCore.so: cannot open shared object file`.
+Static linking bakes the Swift runtime into the binary so it runs under any
+user with a stripped environment.
 
 ```bash
 git clone https://github.com/franckjej/heidrun-server && cd heidrun-server
-swift build -c release --product heidrun-admin
+swift build -c release --static-swift-stdlib --product heidrun-admin
 sudo install -m0755 .build/release/heidrun-admin /usr/local/bin/heidrun-admin
 ```
 
-(Alternatively, copy it straight out of the image:
-`docker compose cp heidrun:/usr/local/bin/heidrun-admin /usr/local/bin/`.)
+(A harmless `mktemp' is dangerous linker warning from Foundation's static
+archive is expected — it's upstream, not this project.)
+
+(Alternatively, skip the build and copy the binary straight out of the
+image: `docker compose cp heidrun:/usr/local/bin/heidrun-admin /usr/local/bin/`.)
 
 ## 4. Administer from the host
 
