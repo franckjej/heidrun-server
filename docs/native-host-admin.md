@@ -129,9 +129,30 @@ sudo heidrun-admin audit --type auth --since 7d --db "$DB"
 ```
 
 `sudo -u '#1979' heidrun-admin …` (explicitly as 1979) also works and is
-equivalent. Tip: set `HEIDRUN_DB_PATH=$DB` to drop the `--db` flag, or point
-`--config` at the same TOML the server uses. Every command supports
-`--help`; read commands also support `--json`.
+equivalent. Every command supports `--help`; read commands also support
+`--json`.
+
+### Running with no flags
+
+With no `--config`/`--db` (and no `HEIDRUN_CONFIG`/`HEIDRUN_DB_PATH`),
+`heidrun-admin` resolves its data automatically, in order:
+
+1. `/etc/heidrun/heidrun-admin.toml` — a system-wide config file
+2. `./heidrun-admin.toml` — a config file in the current directory
+3. `./_data/heidrun.sqlite` — the bind-mount convention path
+
+So either drop a one-line config (copy `heidrun-admin.example.toml`, set
+`db_path`) at one of the first two locations, or just run the admin from the
+deployment directory where `_data/` lives:
+
+```bash
+# config at /etc/heidrun/heidrun-admin.toml, or cwd has ./_data:
+sudo heidrun-admin audit --type auth --since 7d
+sudo heidrun-admin account list
+```
+
+The audit log and news JSON are still derived as siblings of whichever DB
+path wins. An explicit `--config`/`--db` always overrides these defaults.
 
 ## Caveats
 

@@ -1,0 +1,20 @@
+# heidrun-admin.example.toml — optional config so `heidrun-admin` needs no
+# flags. Copy to one of the default search locations and set your host path:
+#
+#   /etc/heidrun/heidrun-admin.toml   (system-wide)
+#   ./heidrun-admin.toml              (current directory)
+#
+# With this in place you can just run `sudo heidrun-admin audit …` — no
+# --db / --config. (If absent, heidrun-admin falls back to
+# ./_data/heidrun.sqlite, the bind-mount convention.)
+#
+# This is the same format as heidrun-server.example.toml; only db_path is
+# needed — the audit log (<db>.audit.sqlite) and news JSON (<db>.news.json)
+# are derived as siblings automatically.
+
+db_path = "/home/heidrun-server/_data/heidrun.sqlite"
+
+# Override the derived siblings only if your layout differs:
+# audit_db_path   = "/home/heidrun-server/_data/heidrun.audit.sqlite"
+# news_state_path = "/home/heidrun-server/_data/heidrun.news.json"
+# files_root      = "/home/heidrun-server/_data/files"
