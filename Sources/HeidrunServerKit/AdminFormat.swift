@@ -35,6 +35,10 @@ public enum AdminFormat {
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(value)
+        // JSONEncoder always emits valid UTF-8, so the non-failable
+        // initializer is correct (never substitutes); the failable form
+        // would only add an impossible nil branch.
+        // swiftlint:disable:next optional_data_string_conversion
         return String(decoding: data, as: UTF8.self)
     }
 

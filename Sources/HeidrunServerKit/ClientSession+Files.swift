@@ -303,7 +303,7 @@ extension ClientSession {
         let isFolder = await files.isFolder(at: path, name: name) == true
         guard hasPrivilege(isFolder ? .deleteFolders : .deleteFiles) else {
             await denyPrivilege(taskNumber: header.taskNumber, transactionID: 204,
-                             privilege: isFolder ? "deleteFolders" : "deleteFiles")
+                                privilege: isFolder ? "deleteFolders" : "deleteFiles")
             return
         }
         let ok = await files.delete(at: path, name: name)
@@ -366,7 +366,7 @@ extension ClientSession {
         if let newName = fields.string(.fileRename, encoding: stringEncoding), !newName.isEmpty {
             guard hasPrivilege(isFolder ? .renameFolders : .renameFiles) else {
                 await denyPrivilege(taskNumber: header.taskNumber, transactionID: 207,
-                                 privilege: isFolder ? "renameFolders" : "renameFiles")
+                                    privilege: isFolder ? "renameFolders" : "renameFiles")
                 return
             }
             let renamed = await files.rename(at: path, from: currentName, to: newName)
@@ -382,7 +382,7 @@ extension ClientSession {
         if let comment = fields.string(.fileComment, encoding: stringEncoding) {
             guard hasPrivilege(isFolder ? .commentFolders : .commentFiles) else {
                 await denyPrivilege(taskNumber: header.taskNumber, transactionID: 207,
-                                 privilege: isFolder ? "commentFolders" : "commentFiles")
+                                    privilege: isFolder ? "commentFolders" : "commentFiles")
                 return
             }
             let saved = await files.setComment(at: path, name: currentName, comment: comment)
@@ -415,7 +415,7 @@ extension ClientSession {
         let isFolder = await files.isFolder(at: sourcePath, name: name) == true
         guard hasPrivilege(isFolder ? .moveFolders : .moveFiles) else {
             await denyPrivilege(taskNumber: header.taskNumber, transactionID: 208,
-                             privilege: isFolder ? "moveFolders" : "moveFiles")
+                                privilege: isFolder ? "moveFolders" : "moveFiles")
             return
         }
         let ok = await files.move(from: sourcePath, name: name, to: destinationPath)
