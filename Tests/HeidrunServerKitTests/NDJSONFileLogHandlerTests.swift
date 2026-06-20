@@ -1,0 +1,48 @@
+import Testing
+import Foundation
+import Logging
+@testable import HeidrunServerKit
+
+@Suite("NDJSONFileLogHandler")
+struct NDJSONFileLogHandlerTests {
+    private func tempPath() -> String {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent("fh-\(UUID().uuidString).ndjson").path
+    }
+
+    @Test("a log call writes a decodable record with level, message, metadata")
+    func writesRecord() throws {
+        let path = tempPath()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let writer = NDJSONLogWriter(path: path, maxBytes: 1_000_000, keep: 2)
+        var logger = Logger(label: "org.test.kit") { label in
+            NDJSONFileLogHandler(label: label, writer: writer, logLevel: .info)
+        }
+        logger[metadataKey: "socket"] = "42"
+        logger.info("accepted connection")
+        let text = try String(contentsOfFile: path, encoding: .utf8)
+        let line = try #require(text.split(separator: "\n").first)
+        let record = try JSONDecoder().decode(NDJSONLogRecord.self, from: Data(line.utf8))
+        #expect(record.level == "info")
+        #expect(record.message == "accepted connection")
+        #expect(record.label == "org.test.kit")
+        #expect(record.metadata["socket"] == "42")
+    }
+
+    @Test("level below the handler threshold is dropped")
+    func levelFilter() throws {
+        let path = tempPath()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let writer = NDJSONLogWriter(path: path, maxBytes: 1_000_000, keep: 2)
+        let logger = Logger(label: "org.test.kit") { label in
+            NDJSONFileLogHandler(label: label, writer: writer, logLevel: .warning)
+        }
+        logger.info("noise")        // below threshold
+        logger.warning("kept")
+        let text = (try? String(contentsOfFile: path, encoding: .utf8)) ?? ""
+        let messages = text.split(separator: "\n").compactMap {
+            try? JSONDecoder().decode(NDJSONLogRecord.self, from: Data($0.utf8))
+        }.map(\.message)
+        #expect(messages == ["kept"])
+    }
+}
