@@ -23,6 +23,13 @@ public actor HeidrunServer {
     private var tlsTransferChannel: (any Channel)?
     private var trackerAnnouncer: TrackerAnnouncer?
     private var idleAwaySupervisor: Task<Void, Never>?
+    /// Live accepted connections, drained on `stop()` before the event-loop
+    /// group shuts down so per-connection session tasks never schedule on a
+    /// dead loop.
+    private let connections = ConnectionTracker()
+
+    /// Number of live accepted connections. Test/diagnostic aid.
+    var liveConnectionCount: Int { connections.count }
 
     public init(
         configuration: ServerConfiguration,
@@ -211,10 +218,12 @@ public actor HeidrunServer {
         let filesCopy = fileVault
         let configurationCopy = self.configuration
         let stringEncodingCopy = self.stringEncoding
+        let connectionsCopy = self.connections
 
         let bannerKindCopy = configurationCopy.bannerKind
         let controlBootstrap = Self.makeControlBootstrap(
             on: eventLoopGroup,
+            connections: connectionsCopy,
             sslContext: nil,
             registry: registryCopy,
             news: newsCopy,
@@ -232,6 +241,7 @@ public actor HeidrunServer {
 
         let transferBootstrap = Self.makeTransferBootstrap(
             on: eventLoopGroup,
+            connections: connectionsCopy,
             sslContext: nil,
             transfers: transfersCopy,
             files: filesCopy
@@ -272,6 +282,7 @@ public actor HeidrunServer {
             )
             let tlsControlBootstrap = Self.makeControlBootstrap(
                 on: eventLoopGroup,
+                connections: connectionsCopy,
                 sslContext: sslContext,
                 registry: registryCopy,
                 news: newsCopy,
@@ -288,6 +299,7 @@ public actor HeidrunServer {
             )
             let tlsTransferBootstrap = Self.makeTransferBootstrap(
                 on: eventLoopGroup,
+                connections: connectionsCopy,
                 sslContext: sslContext,
                 transfers: transfersCopy,
                 files: filesCopy
@@ -413,6 +425,10 @@ public actor HeidrunServer {
         try? await tlsControlChannel?.close().get()
         try? await transferChannel?.close().get()
         try? await controlChannel?.close().get()
+        // Close live connections and let their per-connection session tasks
+        // finish before tearing down the loops — otherwise a still-running
+        // task schedules channel I/O on a dead event loop.
+        await connections.drainAndWait()
         try? await group?.shutdownGracefully()
         controlChannel = nil
         transferChannel = nil
@@ -429,6 +445,7 @@ public actor HeidrunServer {
     /// path.
     private static func makeControlBootstrap(
         on eventLoopGroup: any EventLoopGroup,
+        connections: ConnectionTracker,
         sslContext: NIOSSLContext?,
         registry: UserRegistry,
         news: NewsTree,
@@ -469,6 +486,7 @@ public actor HeidrunServer {
                     let readerHandler = SessionIOHandler(continuation: continuation)
                     return childChannel.pipeline.addHandler(readerHandler).map {
                         let channelBox = UncheckedSendableBox(childChannel)
+                        connections.add(childChannel)
                         Task {
                             await Self.runChildSession(
                                 channelBox: channelBox,
@@ -487,6 +505,7 @@ public actor HeidrunServer {
                                 bannerBytes: bannerBytes,
                                 bannerKind: bannerKind
                             )
+                            connections.remove(channelBox.value)
                         }
                     }
                 }
@@ -497,6 +516,7 @@ public actor HeidrunServer {
     /// Same TLS-prepending pattern as `makeControlBootstrap`.
     private static func makeTransferBootstrap(
         on eventLoopGroup: any EventLoopGroup,
+        connections: ConnectionTracker,
         sslContext: NIOSSLContext?,
         transfers: TransferRegistry,
         files: FileVault
@@ -523,6 +543,7 @@ public actor HeidrunServer {
                     let readerHandler = SessionIOHandler(continuation: continuation)
                     return childChannel.pipeline.addHandler(readerHandler).map {
                         let channelBox = UncheckedSendableBox(childChannel)
+                        connections.add(childChannel)
                         Task {
                             await Self.runTransferChannel(
                                 channelBox: channelBox,
@@ -530,6 +551,7 @@ public actor HeidrunServer {
                                 transfers: transfers,
                                 files: files
                             )
+                            connections.remove(channelBox.value)
                         }
                     }
                 }

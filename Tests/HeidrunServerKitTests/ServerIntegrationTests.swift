@@ -73,6 +73,22 @@ struct ServerIntegrationTests {
 
     // MARK: - Tests
 
+    @Test("stop() drains live connections so no session task outlives the event loop")
+    func stopDrainsLiveConnections() async throws {
+        let server = HeidrunServer(
+            configuration: ServerConfiguration(port: 0, serverName: "drain test"))
+        let port = try await server.start()
+        let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "drainer")
+        // login completes only after several round-trip reads, so the channel
+        // initializer's synchronous `connections.add` has definitely run.
+        #expect(await server.liveConnectionCount == 1)
+        await server.stop()
+        // The drain closed the connection and awaited its session task before
+        // the event loop shut down, so the tracker is empty.
+        #expect(await server.liveConnectionCount == 0)
+        _ = client   // keep the connection alive until after stop()
+    }
+
     @Test("login pushes a User Access bitmap (TX 354) carrying the account's privileges")
     func loginPushesUserAccess() async throws {
         let configuration = ServerConfiguration(
