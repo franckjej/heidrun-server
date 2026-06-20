@@ -119,6 +119,16 @@ struct UnifiedLogFilterTests {
 
 @Suite("UnifiedLogFormatter")
 struct UnifiedLogFormatterTests {
+    @Test("withDate prefixes the line with a full date")
+    func lineWithDate() {
+        let record = UnifiedLogRecord(timestampMillis: 1_700_000_000_000, source: .op,
+                                      tag: "info", text: "hi", account: nil)
+        let rendered = UnifiedLogFormatter.line(record, withDate: true)
+        #expect(rendered.range(of: #"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"#, options: .regularExpression) != nil)
+        let plain = UnifiedLogFormatter.line(record)
+        #expect(plain.range(of: #"^\d{2}:\d{2}:\d{2} "#, options: .regularExpression) != nil)
+    }
+
     @Test("line carries the source marker, tag and text")
     func line() {
         let record = UnifiedLogRecord(timestampMillis: 1_700_000, source: .audit,

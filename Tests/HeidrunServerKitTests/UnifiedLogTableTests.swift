@@ -69,6 +69,21 @@ struct UnifiedLogTableTests {
         #expect(row.contains("…"))
     }
 
+    @Test("withDate switches the timestamp column to a full date")
+    func withDateColumn() {
+        let header = UnifiedLogTableFormatter.header(withDate: true)
+        #expect(header.contains("TIMESTAMP"))
+        let row = UnifiedLogTableFormatter.row(opDispatch(transID: "107"), withDate: true)
+        #expect(row.range(of: #"^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}"#, options: .regularExpression) != nil)
+    }
+
+    @Test("the default timestamp column is time-of-day only")
+    func defaultTimeOnly() {
+        let row = UnifiedLogTableFormatter.row(opDispatch(transID: "107"))
+        #expect(row.range(of: #"^\d{2}:\d{2}:\d{2} "#, options: .regularExpression) != nil)
+        #expect(UnifiedLogTableFormatter.header().contains("TIME "))
+    }
+
     @Test("rows joins records with newlines and excludes the header")
     func rowsJoin() {
         let text = UnifiedLogTableFormatter.rows([opDispatch(transID: "107"), opDispatch(transID: "300")])

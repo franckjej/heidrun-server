@@ -23,6 +23,7 @@ struct Log: AsyncParsableCommand {
     @Option(help: "Override the op-log NDJSON path.") var opLogPath: String?
     @Flag(help: "Emit JSON.") var json = false
     @Flag(help: "Render as an aligned fixed-width table.") var table = false
+    @Flag(help: "Include the date in timestamps (else time-of-day only).") var date = false
 
     func run() async throws {
         let configuration = try global.resolvedConfiguration()
@@ -63,12 +64,12 @@ struct Log: AsyncParsableCommand {
                 }
             } else if table {
                 if !headerShown {
-                    print(UnifiedLogTableFormatter.header())
+                    print(UnifiedLogTableFormatter.header(withDate: date))
                     headerShown = true
                 }
-                print(UnifiedLogTableFormatter.rows(kept))
+                print(UnifiedLogTableFormatter.rows(kept, withDate: date))
             } else {
-                print(UnifiedLogFormatter.lines(kept))
+                print(UnifiedLogFormatter.lines(kept, withDate: date))
             }
         }
 

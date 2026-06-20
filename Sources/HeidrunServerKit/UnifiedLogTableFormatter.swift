@@ -12,10 +12,9 @@ public enum UnifiedLogTableFormatter {
         let value: @Sendable (UnifiedLogRecord) -> String
     }
 
-    /// Fixed columns, in order. ACTION is appended separately (variable width,
-    /// never padded or truncated).
-    private static let columns: [Column] = [
-        Column(title: "TIME", width: 8) { timeString($0.timestampMillis) },
+    /// Columns after the leading timestamp, in order. ACTION is appended
+    /// separately (variable width, never padded or truncated).
+    private static let fixedColumns: [Column] = [
         Column(title: "S", width: 1) { $0.source == .audit ? "a" : "o" },
         Column(title: "LVL", width: 7) { $0.source == .op ? $0.tag : "—" },
         Column(title: "HOST", width: 21) { $0.metadata["remoteHost"] ?? "" },
@@ -27,18 +26,33 @@ public enum UnifiedLogTableFormatter {
         Column(title: "FLDS", width: 4) { $0.metadata["fieldCount"] ?? "" }
     ]
 
-    public static func header() -> String {
-        let fixed = columns.map { cell($0.title, $0.width) }.joined(separator: " ")
+    /// The leading timestamp column — `TIME` (`HH:mm:ss`), or `TIMESTAMP`
+    /// (`yyyy-MM-dd HH:mm:ss`) when `withDate` is set.
+    private static func timeColumn(withDate: Bool) -> Column {
+        if withDate {
+            return Column(title: "TIMESTAMP", width: 19) {
+                LogTimestamp.string($0.timestampMillis, withDate: true)
+            }
+        }
+        return Column(title: "TIME", width: 8) {
+            LogTimestamp.string($0.timestampMillis, withDate: false)
+        }
+    }
+
+    public static func header(withDate: Bool = false) -> String {
+        let cols = [timeColumn(withDate: withDate)] + fixedColumns
+        let fixed = cols.map { cell($0.title, $0.width) }.joined(separator: " ")
         return "\(fixed) ACTION"
     }
 
-    public static func row(_ record: UnifiedLogRecord) -> String {
-        let fixed = columns.map { cell($0.value(record), $0.width) }.joined(separator: " ")
+    public static func row(_ record: UnifiedLogRecord, withDate: Bool = false) -> String {
+        let cols = [timeColumn(withDate: withDate)] + fixedColumns
+        let fixed = cols.map { cell($0.value(record), $0.width) }.joined(separator: " ")
         return "\(fixed) \(action(for: record))"
     }
 
-    public static func rows(_ records: [UnifiedLogRecord]) -> String {
-        records.map(row).joined(separator: "\n")
+    public static func rows(_ records: [UnifiedLogRecord], withDate: Bool = false) -> String {
+        records.map { row($0, withDate: withDate) }.joined(separator: "\n")
     }
 
     /// A generic `dispatch` op row → resolved transaction name (`txn <id>`
@@ -60,15 +74,4 @@ public enum UnifiedLogTableFormatter {
         if width <= 1 { return String(value.prefix(width)) }
         return String(value.prefix(width - 1)) + "…"
     }
-
-    private static func timeString(_ millis: Int64) -> String {
-        timeFormatter.string(from: Date(timeIntervalSince1970: TimeInterval(millis) / 1000))
-    }
-
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        formatter.timeZone = .current
-        return formatter
-    }()
 }

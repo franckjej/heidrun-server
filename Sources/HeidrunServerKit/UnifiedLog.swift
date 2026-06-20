@@ -128,9 +128,8 @@ public enum UnifiedLogFormatter {
     /// `HH:mm:ss  [a|o] LEVEL    HOST:PORT             message   key=value …`
     /// `remoteHost` is pulled into its own bare column; any remaining metadata
     /// trails as sorted `key=value` pairs.
-    public static func line(_ record: UnifiedLogRecord) -> String {
-        let seconds = TimeInterval(record.timestampMillis) / 1000
-        let time = timeFormatter.string(from: Date(timeIntervalSince1970: seconds))
+    public static func line(_ record: UnifiedLogRecord, withDate: Bool = false) -> String {
+        let time = LogTimestamp.string(record.timestampMillis, withDate: withDate)
         let marker = record.source == .audit ? "a" : "o"
         var meta = record.metadata
         let host = meta.removeValue(forKey: "remoteHost") ?? "—"
@@ -147,16 +146,9 @@ public enum UnifiedLogFormatter {
         value.count >= width ? value : value + String(repeating: " ", count: width - value.count)
     }
 
-    public static func lines(_ records: [UnifiedLogRecord]) -> String {
-        records.map(line).joined(separator: "\n")
+    public static func lines(_ records: [UnifiedLogRecord], withDate: Bool = false) -> String {
+        records.map { line($0, withDate: withDate) }.joined(separator: "\n")
     }
-
-    private static let timeFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "HH:mm:ss"
-        formatter.timeZone = .current
-        return formatter
-    }()
 }
 
 /// JSON projection of one unified record for `--json`.
