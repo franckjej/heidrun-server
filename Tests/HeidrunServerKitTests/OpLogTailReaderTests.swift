@@ -12,7 +12,8 @@ struct OpLogTailReaderTests {
     private func line(_ index: Int) -> String {
         let record = NDJSONLogRecord(timestampMillis: Int64(index), level: "info",
                                      label: "t", message: "line \(index)", metadata: [:], source: "t")
-        let data = try! JSONEncoder().encode(record)
+        let data = (try? JSONEncoder().encode(record)) ?? Data()
+        // swiftlint:disable:next optional_data_string_conversion
         return String(decoding: data, as: UTF8.self) + "\n"
     }
 

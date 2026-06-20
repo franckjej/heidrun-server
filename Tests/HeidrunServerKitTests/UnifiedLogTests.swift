@@ -23,7 +23,7 @@ struct UnifiedLogRecordTests {
     @Test("maps an op-log record to a unified record")
     func fromOp() {
         let operationalRecord = NDJSONLogRecord(timestampMillis: 1_700_500, level: "warning",
-                                 label: "t", message: "tracker registration failed", metadata: [:], source: "t")
+                                                label: "t", message: "tracker registration failed", metadata: [:], source: "t")
         let record = UnifiedLogRecord(op: operationalRecord)
         #expect(record.source == .op)
         #expect(record.tag == "warning")
@@ -134,6 +134,7 @@ struct NDJSONLogRecordTests {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         let data = try encoder.encode(record)
+        // swiftlint:disable:next optional_data_string_conversion
         let text = String(decoding: data, as: UTF8.self)
         #expect(text.contains("\"ts\":1750000000123"))
         #expect(text.contains("\"level\":\"info\""))
