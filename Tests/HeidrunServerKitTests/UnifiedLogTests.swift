@@ -107,8 +107,8 @@ struct UnifiedLogFormatterTests {
         #expect(rendered.contains("alice"))
     }
 
-    @Test("op metadata (IP, TLS) is carried and rendered after the message")
-    func opMetadataRendered() {
+    @Test("op metadata (IP, TLS) is carried; host renders as a bare column")
+    func opMetadataRendered() throws {
         let operationalRecord = NDJSONLogRecord(
             timestampMillis: 1_700_000, level: "info", label: "t",
             message: "connection accepted",
@@ -117,8 +117,13 @@ struct UnifiedLogFormatterTests {
         #expect(record.metadata["remoteHost"] == "203.0.113.7")
         let rendered = UnifiedLogFormatter.line(record)
         #expect(rendered.contains("connection accepted"))
-        #expect(rendered.contains("remoteHost=203.0.113.7"))
-        #expect(rendered.contains("tls=true"))
+        #expect(rendered.contains("203.0.113.7"))      // host as a bare column
+        #expect(!rendered.contains("remoteHost="))     // pulled out, not key=value
+        #expect(rendered.contains("tls=true"))         // other meta still trails
+        // host column precedes the message
+        let hostIndex = try #require(rendered.range(of: "203.0.113.7"))
+        let messageIndex = try #require(rendered.range(of: "connection accepted"))
+        #expect(hostIndex.lowerBound < messageIndex.lowerBound)
     }
 
     @Test("backfill merges and sorts both sources, keeping the last N")

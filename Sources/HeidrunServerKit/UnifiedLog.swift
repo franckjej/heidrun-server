@@ -40,7 +40,8 @@ public struct UnifiedLogRecord: Sendable, Equatable {
             source: .audit,
             tag: event.kind.rawValue,
             text: "\(who)\(target)\(detail)",
-            account: event.account
+            account: event.account,
+            metadata: event.ip.map { ["remoteHost": $0] } ?? [:]
         )
     }
 
@@ -120,17 +121,26 @@ public enum UnifiedLogFilter {
 
 /// Renders unified records for the terminal or `--json`.
 public enum UnifiedLogFormatter {
-    /// `HH:mm:ss  [a|o] TAG            text`
+    /// `HH:mm:ss  [a|o] LEVEL    HOST:PORT             message   key=value …`
+    /// `remoteHost` is pulled into its own bare column; any remaining metadata
+    /// trails as sorted `key=value` pairs.
     public static func line(_ record: UnifiedLogRecord) -> String {
         let seconds = TimeInterval(record.timestampMillis) / 1000
         let time = timeFormatter.string(from: Date(timeIntervalSince1970: seconds))
         let marker = record.source == .audit ? "a" : "o"
-        let tag = record.tag.padding(toLength: 14, withPad: " ", startingAt: 0)
-        let meta = record.metadata.isEmpty ? "" : "  " + record.metadata
+        var meta = record.metadata
+        let host = meta.removeValue(forKey: "remoteHost") ?? "—"
+        let rest = meta.isEmpty ? "" : "  " + meta
             .sorted { $0.key < $1.key }
             .map { "\($0.key)=\($0.value)" }
             .joined(separator: " ")
-        return "\(time)  [\(marker)] \(tag) \(record.text)\(meta)"
+        return "\(time)  [\(marker)] \(pad(record.tag, 8)) \(pad(host, 21)) \(record.text)\(rest)"
+    }
+
+    /// Right-pad to `width`, never truncating (a longer value just isn't
+    /// padded — keeps long audit kinds / IPv6 hosts intact).
+    private static func pad(_ value: String, _ width: Int) -> String {
+        value.count >= width ? value : value + String(repeating: " ", count: width - value.count)
     }
 
     public static func lines(_ records: [UnifiedLogRecord]) -> String {
