@@ -6,10 +6,10 @@ import Foundation
 /// a generic `dispatch` op row's `transID` to a transaction name via
 /// `HotlineTransactionName`.
 public enum UnifiedLogTableFormatter {
-    private struct Column: @unchecked Sendable {
+    private struct Column: Sendable {
         let title: String
         let width: Int
-        let value: (UnifiedLogRecord) -> String
+        let value: @Sendable (UnifiedLogRecord) -> String
     }
 
     /// Fixed columns, in order. ACTION is appended separately (variable width,
