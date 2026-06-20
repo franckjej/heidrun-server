@@ -4,6 +4,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/); the
 project adheres to [Semantic Versioning](https://semver.org/). Pre-1.0
 development happened on the `1.0.0-rcN` tag series.
 
+## [1.2.1] — 2026-06-21
+
+### Added
+- **`heidrun-admin log --date`** — include the full date
+  (`yyyy-MM-dd HH:mm:ss`) in log timestamps, in both the line and `--table`
+  views; without the flag the timestamp is time-of-day only as before.
+
+Pins heidrun-protocol `1.0.0-rc20`. Distribution: Docker + build-from-source.
+
 ## [1.2.0] — 2026-06-21
 
 Adds a tabular view for `heidrun-admin log`.
