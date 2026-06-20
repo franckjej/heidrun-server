@@ -57,6 +57,21 @@ struct NDJSONLogWriterTests {
         #expect(lines.allSatisfy { (try? JSONDecoder().decode(NDJSONLogRecord.self, from: Data($0.utf8))) != nil })
     }
 
+    @Test("keep == 1 retains only a single archive")
+    func keepOne() throws {
+        let path = tempPath("keep-one")
+        defer {
+            for suffix in ["", ".1", ".2"] {
+                try? FileManager.default.removeItem(atPath: path + suffix)
+            }
+        }
+        let writer = NDJSONLogWriter(path: path, maxBytes: 60, keep: 1)
+        for index in 0..<20 { writer.append(record(index)) }
+        #expect(FileManager.default.fileExists(atPath: path))
+        #expect(FileManager.default.fileExists(atPath: path + ".1"))
+        #expect(!FileManager.default.fileExists(atPath: path + ".2"))
+    }
+
     @Test("unwritable path fails soft (no crash, no file)")
     func failSoft() {
         let writer = NDJSONLogWriter(

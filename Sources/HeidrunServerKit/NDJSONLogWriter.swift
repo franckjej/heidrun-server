@@ -31,6 +31,9 @@ public final class NDJSONLogWriter: @unchecked Sendable {
         if let openedHandle, let end = try? openedHandle.seekToEnd() {
             self.currentSize = Int(end)
         } else {
+            // Couldn't size the existing file (open or seek failed): start at 0.
+            // The active file may then overshoot maxBytes once before the next
+            // rotation — acceptable for a best-effort log sink.
             self.currentSize = 0
         }
     }
