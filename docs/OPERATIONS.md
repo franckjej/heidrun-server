@@ -383,9 +383,9 @@ docker compose exec heidrun heidrun-admin log -f --table --level debug
 
 Columns: `TIME · S · LVL · HOST · NICK · TLS · TRANS · SOCK · TASK · FLDS · ACTION`.
 `S` is the source (`a` audit / `o` operational); `ACTION` is a human-readable
-description — for a per-transaction `dispatch` row it resolves the numeric
-`TRANS` id to a name (e.g. `107 → login`), otherwise it's the log message or
-audit description. The protocol columns (`TRANS`/`SOCK`/`TASK`/`FLDS`) come from
+description — for a per-transaction `dispatch` row it shows the transaction
+name resolved from the numeric `TRANS` id (so a row with `TRANS` 107 shows
+`login` in ACTION), otherwise it's the log message or audit description. The protocol columns (`TRANS`/`SOCK`/`TASK`/`FLDS`) come from
 the per-transaction `dispatch` line, which is **debug-level** — pass
 `--level debug` (and run the server at `HEIDRUN_LOG_LEVEL=debug`) to see them
 populated; at `info` they're blank. `--table` and `--json` are mutually
