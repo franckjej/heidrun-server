@@ -4,6 +4,23 @@ The format follows [Keep a Changelog](https://keepachangelog.com/); the
 project adheres to [Semantic Versioning](https://semver.org/). Pre-1.0
 development happened on the `1.0.0-rcN` tag series.
 
+## [1.2.0] — 2026-06-21
+
+Adds a tabular view for `heidrun-admin log`.
+
+### Added
+- **`heidrun-admin log --table`** — a fixed-width tabular output mode for the
+  unified log stream, with one column per field
+  (`TIME · S · LVL · HOST · NICK · TLS · TRANS · SOCK · TASK · FLDS · ACTION`)
+  instead of one free-form line per record. The `ACTION` column resolves a
+  per-transaction `dispatch` row's numeric transaction id to a name (a row with
+  `TRANS` 107 shows `login`); other rows show their message or audit
+  description. The protocol columns (`TRANS`/`SOCK`/`TASK`/`FLDS`) ride the
+  debug-level `dispatch` line — pass `--level debug` to populate them. Mutually
+  exclusive with `--json`.
+
+Pins heidrun-protocol `1.0.0-rc20`. Distribution: Docker + build-from-source.
+
 ## [1.1.0] — 2026-06-20
 
 Adds a native way to watch server activity without `docker logs`.
