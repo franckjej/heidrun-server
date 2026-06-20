@@ -372,7 +372,24 @@ docker compose exec heidrun heidrun-admin log -f --json
 
 Flags: `-f/--follow`, `--lines N` (backfill, default 50), `--source audit|op|both`,
 `--account <login>`, `--level <trace…critical>`, `--type transfer|auth|admin|presence|<kind>`,
-`--interval <ms>` (follow poll, default 500), `--op-log-path <path>`, `--json`.
+`--interval <ms>` (follow poll, default 500), `--op-log-path <path>`, `--json`, `--table`.
+
+**Table view.** `--table` renders the stream as an aligned, fixed-width table
+instead of one free-form line per record:
+
+```bash
+docker compose exec heidrun heidrun-admin log -f --table --level debug
+```
+
+Columns: `TIME · S · LVL · HOST · NICK · TLS · TRANS · SOCK · TASK · FLDS · ACTION`.
+`S` is the source (`a` audit / `o` operational); `ACTION` is a human-readable
+description — for a per-transaction `dispatch` row it resolves the numeric
+`TRANS` id to a name (e.g. `107 → login`), otherwise it's the log message or
+audit description. The protocol columns (`TRANS`/`SOCK`/`TASK`/`FLDS`) come from
+the per-transaction `dispatch` line, which is **debug-level** — pass
+`--level debug` (and run the server at `HEIDRUN_LOG_LEVEL=debug`) to see them
+populated; at `info` they're blank. `--table` and `--json` are mutually
+exclusive.
 
 The operational-log file is bounded by size rotation (default 10 MB × 5
 archives). Disable it with `operational_log_enabled = false` /
