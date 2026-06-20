@@ -107,6 +107,20 @@ struct UnifiedLogFormatterTests {
         #expect(rendered.contains("alice"))
     }
 
+    @Test("op metadata (IP, TLS) is carried and rendered after the message")
+    func opMetadataRendered() {
+        let operationalRecord = NDJSONLogRecord(
+            timestampMillis: 1_700_000, level: "info", label: "t",
+            message: "connection accepted",
+            metadata: ["remoteHost": "203.0.113.7", "tls": "true"], source: "t")
+        let record = UnifiedLogRecord(op: operationalRecord)
+        #expect(record.metadata["remoteHost"] == "203.0.113.7")
+        let rendered = UnifiedLogFormatter.line(record)
+        #expect(rendered.contains("connection accepted"))
+        #expect(rendered.contains("remoteHost=203.0.113.7"))
+        #expect(rendered.contains("tls=true"))
+    }
+
     @Test("backfill merges and sorts both sources, keeping the last N")
     func backfill() {
         let event = AuditEvent(timestamp: Date(timeIntervalSince1970: 2), kind: .join,

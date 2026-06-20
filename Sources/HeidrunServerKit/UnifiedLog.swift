@@ -14,16 +14,20 @@ public struct UnifiedLogRecord: Sendable, Equatable {
     public let text: String
     /// Account login when known — used by `--user` filtering.
     public let account: String?
+    /// Operational-log metadata (e.g. `remoteHost`, `tls`, `socket`). Empty
+    /// for audit rows, whose context is already folded into `text`.
+    public let metadata: [String: String]
 
     public init(
         timestampMillis: Int64, source: Source, tag: String,
-        text: String, account: String?
+        text: String, account: String?, metadata: [String: String] = [:]
     ) {
         self.timestampMillis = timestampMillis
         self.source = source
         self.tag = tag
         self.text = text
         self.account = account
+        self.metadata = metadata
     }
 
     public init(audit identified: IdentifiedAuditEvent) {
@@ -46,7 +50,8 @@ public struct UnifiedLogRecord: Sendable, Equatable {
             source: .op,
             tag: record.level,
             text: record.message,
-            account: nil
+            account: nil,
+            metadata: record.metadata
         )
     }
 }
@@ -121,7 +126,11 @@ public enum UnifiedLogFormatter {
         let time = timeFormatter.string(from: Date(timeIntervalSince1970: seconds))
         let marker = record.source == .audit ? "a" : "o"
         let tag = record.tag.padding(toLength: 14, withPad: " ", startingAt: 0)
-        return "\(time)  [\(marker)] \(tag) \(record.text)"
+        let meta = record.metadata.isEmpty ? "" : "  " + record.metadata
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: " ")
+        return "\(time)  [\(marker)] \(tag) \(record.text)\(meta)"
     }
 
     public static func lines(_ records: [UnifiedLogRecord]) -> String {
@@ -143,6 +152,7 @@ public struct UnifiedLogLineDTO: Encodable {
     public let tag: String
     public let text: String
     public let account: String?
+    public let metadata: [String: String]?
 
     nonisolated(unsafe) private static let isoFormatter = ISO8601DateFormatter()
 
@@ -153,6 +163,7 @@ public struct UnifiedLogLineDTO: Encodable {
         self.tag = record.tag
         self.text = record.text
         self.account = record.account
+        self.metadata = record.metadata.isEmpty ? nil : record.metadata
     }
 }
 
