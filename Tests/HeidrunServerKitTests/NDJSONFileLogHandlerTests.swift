@@ -65,3 +65,28 @@ struct NDJSONFileLogHandlerTests {
         #expect(messages == ["kept"])
     }
 }
+
+@Suite("OperationalLogging")
+struct OperationalLoggingTests {
+    @Test("with a writer, records reach the file (stderr unaffected)")
+    func multiplexed() throws {
+        let path = FileManager.default.temporaryDirectory
+            .appendingPathComponent("opmux-\(UUID().uuidString).ndjson").path
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let writer = NDJSONLogWriter(path: path, maxBytes: 1_000_000, keep: 2)
+        let logger = Logger(label: "org.test.kit") { label in
+            OperationalLogging.handler(label: label, level: .info, writer: writer)
+        }
+        logger.info("hello")
+        let text = try String(contentsOfFile: path, encoding: .utf8)
+        #expect(text.contains("\"msg\":\"hello\""))
+    }
+
+    @Test("nil writer produces a stderr-only handler that does not crash")
+    func streamOnly() {
+        let logger = Logger(label: "org.test.kit") { label in
+            OperationalLogging.handler(label: label, level: .info, writer: nil)
+        }
+        logger.info("no file sink")   // must not crash
+    }
+}
