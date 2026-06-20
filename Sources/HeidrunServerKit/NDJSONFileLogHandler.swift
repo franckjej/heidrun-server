@@ -9,6 +9,7 @@ public struct NDJSONFileLogHandler: LogHandler {
     private let writer: NDJSONLogWriter
     public var logLevel: Logger.Level
     public var metadata: Logger.Metadata = [:]
+    public var metadataProvider: Logger.MetadataProvider?
 
     public init(label: String, writer: NDJSONLogWriter, logLevel: Logger.Level) {
         self.label = label
@@ -22,7 +23,8 @@ public struct NDJSONFileLogHandler: LogHandler {
     }
 
     public func log(event: LogEvent) {
-        var merged = metadata
+        var merged = metadataProvider?.get() ?? [:]
+        if !metadata.isEmpty { merged.merge(metadata) { _, handlerValue in handlerValue } }
         if let explicit = event.metadata { merged.merge(explicit) { _, latest in latest } }
         let flattened = merged.mapValues { "\($0)" }
         let record = NDJSONLogRecord(

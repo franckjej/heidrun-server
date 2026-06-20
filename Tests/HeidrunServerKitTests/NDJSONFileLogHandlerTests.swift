@@ -29,6 +29,25 @@ struct NDJSONFileLogHandlerTests {
         #expect(record.metadata["socket"] == "42")
     }
 
+    @Test("metadata-provider values are included; call metadata wins ties")
+    func metadataProvider() throws {
+        let path = tempPath()
+        defer { try? FileManager.default.removeItem(atPath: path) }
+        let writer = NDJSONLogWriter(path: path, maxBytes: 1_000_000, keep: 2)
+        let provider = Logger.MetadataProvider { ["env": "prod", "shared": "fromProvider"] }
+        let logger = Logger(label: "org.test.kit") { label in
+            var handler = NDJSONFileLogHandler(label: label, writer: writer, logLevel: .info)
+            handler.metadataProvider = provider
+            return handler
+        }
+        logger.info("hi", metadata: ["shared": "fromCall"])
+        let text = try String(contentsOfFile: path, encoding: .utf8)
+        let line = try #require(text.split(separator: "\n").first)
+        let record = try JSONDecoder().decode(NDJSONLogRecord.self, from: Data(line.utf8))
+        #expect(record.metadata["env"] == "prod")
+        #expect(record.metadata["shared"] == "fromCall")
+    }
+
     @Test("level below the handler threshold is dropped")
     func levelFilter() throws {
         let path = tempPath()
