@@ -4,12 +4,12 @@ import Foundation
 
 @Suite("NDJSONLogRecord")
 struct NDJSONLogRecordTests {
-    @Test("round-trips through JSON with stable keys")
+    @Test("round-trips through JSON with stable compact keys")
     func roundTrip() throws {
         let record = NDJSONLogRecord(
-            ts: 1_750_000_000_123, level: "info",
-            label: "org.tastybytes.heidrun.server", msg: "accepted connection",
-            meta: ["socket": "42"], src: "HeidrunServerKit"
+            timestampMillis: 1_750_000_000_123, level: "info",
+            label: "org.tastybytes.heidrun.server", message: "accepted connection",
+            metadata: ["socket": "42"], source: "HeidrunServerKit"
         )
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -18,6 +18,8 @@ struct NDJSONLogRecordTests {
         #expect(text.contains("\"ts\":1750000000123"))
         #expect(text.contains("\"level\":\"info\""))
         #expect(text.contains("\"meta\":{\"socket\":\"42\"}"))
+        #expect(text.contains("\"msg\":\"accepted connection\""))
+        #expect(text.contains("\"src\":\"HeidrunServerKit\""))
         let decoded = try JSONDecoder().decode(NDJSONLogRecord.self, from: data)
         #expect(decoded == record)
     }
