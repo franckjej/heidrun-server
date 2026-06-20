@@ -4,6 +4,36 @@ The format follows [Keep a Changelog](https://keepachangelog.com/); the
 project adheres to [Semantic Versioning](https://semver.org/). Pre-1.0
 development happened on the `1.0.0-rcN` tag series.
 
+## [1.1.0] — 2026-06-20
+
+Adds a native way to watch server activity without `docker logs`.
+
+### Added
+- **Operational-log file sink** — the server now mirrors its operational log
+  (the same lines it prints to stderr / `docker logs`) into a rotating NDJSON
+  file beside the database (`<db_path>.oplog.ndjson`), so admins can read it
+  off the shared volume. stderr output is unchanged. Size-based rotation
+  (default 10 MB × 5 archives). Config keys `operational_log_enabled`,
+  `operational_log_path`, `operational_log_max_bytes`, `operational_log_keep`
+  (env `HEIDRUN_OP_LOG_*`).
+- **`heidrun-admin log`** — a `tail` / `tail -f` for server activity that
+  merges the structured audit events with the operational log into one
+  timestamp-ordered stream. Flags: `-f/--follow`, `--lines`,
+  `--source audit|op|both`, `--account`, `--level`, `--type`, `--interval`,
+  `--op-log-path`, `--json`. Each line surfaces the client `host:port` and the
+  `tls` flag as columns.
+
+### Changed
+- The operational-log file sink is **on by default**, so a fresh start writes
+  a new `<db_path>.oplog.ndjson` on the data volume. Like `docker logs`, this
+  file includes client **IP addresses** and retains them across rotated
+  archives — independent of the audit log's `log_ip_addresses` setting (which
+  stays off by default). Set `operational_log_enabled = false`
+  (env `HEIDRUN_OP_LOG_ENABLED=off`) to disable; `heidrun-admin log` then
+  streams audit events only. See `docs/OPERATIONS.md`.
+
+Pins heidrun-protocol `1.0.0-rc20`. Distribution: Docker + build-from-source.
+
 ## [1.0.0] — 2026-06-19
 
 First stable release of HeidrunServer — a from-scratch Hotline-protocol
