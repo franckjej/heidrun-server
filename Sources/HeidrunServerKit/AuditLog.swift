@@ -45,6 +45,16 @@ public struct AuditEvent: Sendable, Hashable {
     }
 }
 
+/// An audit event paired with its SQLite row id, for cursor-based tailing.
+public struct IdentifiedAuditEvent: Sendable, Equatable {
+    public let id: Int64
+    public let event: AuditEvent
+    public init(id: Int64, event: AuditEvent) {
+        self.id = id
+        self.event = event
+    }
+}
+
 /// GRDB-backed audit log in its own SQLite file (separate from the
 /// accounts DB), in-memory when no path is configured. Records presence,
 /// transfers, auth, and admin events into one `audit_events` table keyed
@@ -128,6 +138,26 @@ public actor AuditLog {
         }) ?? 0
     }
 
+    /// Events with row id greater than `cursor`, oldest-first, capped at
+    /// `limit`. The cursor for a live tail: pass the last id you saw.
+    public func eventsAfter(id cursor: Int64, limit: Int) -> [IdentifiedAuditEvent] {
+        let sql = "SELECT * FROM audit_events WHERE id > ? ORDER BY id ASC LIMIT ?"
+        guard let rows = try? dbQueue.read({ database in
+            try Row.fetchAll(database, sql: sql, arguments: [cursor, Int64(max(1, limit))])
+        }) else { return [] }
+        return rows.compactMap(Self.decodeIdentified)
+    }
+
+    /// The most-recent `limit` events, oldest-first, with ids — the backfill
+    /// shown before a live tail begins.
+    public func recentIdentifiedEvents(limit: Int) -> [IdentifiedAuditEvent] {
+        let sql = "SELECT * FROM audit_events ORDER BY id DESC LIMIT ?"
+        guard let rows = try? dbQueue.read({ database in
+            try Row.fetchAll(database, sql: sql, arguments: [Int64(max(1, limit))])
+        }) else { return [] }
+        return rows.compactMap(Self.decodeIdentified).reversed()
+    }
+
     private static func decode(_ row: Row) -> AuditEvent? {
         let tsRaw: Int64 = row["ts"] ?? 0
         guard let kind = AuditEvent.Kind(rawValue: row["type"] ?? "") else { return nil }
@@ -144,6 +174,12 @@ public actor AuditLog {
             result: row["result"],
             detail: row["detail"]
         )
+    }
+
+    private static func decodeIdentified(_ row: Row) -> IdentifiedAuditEvent? {
+        guard let event = decode(row) else { return nil }
+        let rowId: Int64 = row["id"] ?? 0
+        return IdentifiedAuditEvent(id: rowId, event: event)
     }
 
     private static func runMigrations(on queue: DatabaseQueue) throws {

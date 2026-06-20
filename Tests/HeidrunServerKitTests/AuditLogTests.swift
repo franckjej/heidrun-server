@@ -88,4 +88,27 @@ struct AuditLogTests {
         let rows = await log.query(type: nil, account: nil, withinHours: 1, limit: 50)
         #expect(rows.map(\.ip) == ["203.0.113.7", nil])
     }
+
+    @Test("recentIdentifiedEvents returns last N oldest-first with ascending ids")
+    func recentIdentified() async throws {
+        let log = try AuditLog(retentionDays: 90)
+        await log.record(event(.join, at: -30, nickname: "aaa"))
+        await log.record(event(.join, at: -20, nickname: "bbb"))
+        await log.record(event(.join, at: -10, nickname: "ccc"))
+        let rows = await log.recentIdentifiedEvents(limit: 2)
+        #expect(rows.map(\.event.nickname) == ["bbb", "ccc"])
+        #expect(rows[0].id < rows[1].id)
+    }
+
+    @Test("eventsAfter(id:) returns only rows past the cursor")
+    func eventsAfterCursor() async throws {
+        let log = try AuditLog(retentionDays: 90)
+        await log.record(event(.join, at: -30, nickname: "aaa"))
+        await log.record(event(.join, at: -20, nickname: "bbb"))
+        let firstBatch = await log.recentIdentifiedEvents(limit: 10)
+        let cursor = firstBatch[0].id
+        await log.record(event(.join, at: -10, nickname: "ccc"))
+        let after = await log.eventsAfter(id: cursor, limit: 10)
+        #expect(after.map(\.event.nickname) == ["bbb", "ccc"])
+    }
 }
