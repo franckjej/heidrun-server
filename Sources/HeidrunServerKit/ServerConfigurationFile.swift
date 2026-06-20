@@ -108,6 +108,22 @@ public struct ServerConfigurationFile: Codable, Sendable {
     /// env `HEIDRUN_LOG_IP_ADDRESSES`. Default off (GDPR).
     public var logIPAddresses: Bool?
 
+    /// Operational-log file sink switch. Config key `operational_log_enabled`;
+    /// env `HEIDRUN_OP_LOG_ENABLED`. Default on.
+    public var operationalLogEnabled: Bool?
+
+    /// Operational-log NDJSON path. Config key `operational_log_path`; env
+    /// `HEIDRUN_OP_LOG_PATH`. Unset → derived `<db_path>.oplog.ndjson`.
+    public var operationalLogPath: String?
+
+    /// Rotation size in bytes. Config key `operational_log_max_bytes`; env
+    /// `HEIDRUN_OP_LOG_MAX_BYTES`. Default 10_000_000.
+    public var operationalLogMaxBytes: Int?
+
+    /// Archives to keep. Config key `operational_log_keep`; env
+    /// `HEIDRUN_OP_LOG_KEEP`. Default 5.
+    public var operationalLogKeep: Int?
+
     public struct BootstrapAdminFile: Codable, Sendable {
         public var login: String?
         public var password: String?
@@ -153,7 +169,11 @@ public struct ServerConfigurationFile: Codable, Sendable {
         auditLogEnabled: Bool? = nil,
         auditDBPath: String? = nil,
         auditRetentionDays: Int? = nil,
-        logIPAddresses: Bool? = nil
+        logIPAddresses: Bool? = nil,
+        operationalLogEnabled: Bool? = nil,
+        operationalLogPath: String? = nil,
+        operationalLogMaxBytes: Int? = nil,
+        operationalLogKeep: Int? = nil
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -184,6 +204,10 @@ public struct ServerConfigurationFile: Codable, Sendable {
         self.auditDBPath = auditDBPath
         self.auditRetentionDays = auditRetentionDays
         self.logIPAddresses = logIPAddresses
+        self.operationalLogEnabled = operationalLogEnabled
+        self.operationalLogPath = operationalLogPath
+        self.operationalLogMaxBytes = operationalLogMaxBytes
+        self.operationalLogKeep = operationalLogKeep
     }
 
     enum CodingKeys: String, CodingKey {
@@ -216,6 +240,10 @@ public struct ServerConfigurationFile: Codable, Sendable {
         case auditDBPath = "audit_db_path"
         case auditRetentionDays = "audit_retention_days"
         case logIPAddresses = "log_ip_addresses"
+        case operationalLogEnabled = "operational_log_enabled"
+        case operationalLogPath = "operational_log_path"
+        case operationalLogMaxBytes = "operational_log_max_bytes"
+        case operationalLogKeep = "operational_log_keep"
     }
 
     public enum LoadError: Swift.Error, Equatable {
@@ -437,6 +465,39 @@ public struct ServerConfigurationFile: Codable, Sendable {
             return logIPAddresses ?? false
         }()
 
+        // Operational-log file sink — env wins ("0/false/no/off" disables);
+        // default ON. Path env > file > derived `<db>.oplog.ndjson` sibling.
+        let resolvedOpLogEnabled: Bool = {
+            if let raw = environment["HEIDRUN_OP_LOG_ENABLED"] {
+                switch raw.lowercased() {
+                case "0", "false", "no", "off": return false
+                default: return true
+                }
+            }
+            return operationalLogEnabled ?? true
+        }()
+        let resolvedOpLogPath: String? = {
+            if let raw = environment["HEIDRUN_OP_LOG_PATH"] { return raw }
+            if let explicit = operationalLogPath { return explicit }
+            guard let dbPath = resolvedDBPath else { return nil }
+            return URL(fileURLWithPath: dbPath)
+                .deletingPathExtension()
+                .appendingPathExtension("oplog.ndjson")
+                .path
+        }()
+        let resolvedOpLogMaxBytes: Int = {
+            if let raw = environment["HEIDRUN_OP_LOG_MAX_BYTES"], let parsed = Int(raw) {
+                return max(1_024, parsed)
+            }
+            return max(1_024, operationalLogMaxBytes ?? 10_000_000)
+        }()
+        let resolvedOpLogKeep: Int = {
+            if let raw = environment["HEIDRUN_OP_LOG_KEEP"], let parsed = Int(raw) {
+                return max(1, parsed)
+            }
+            return max(1, operationalLogKeep ?? 5)
+        }()
+
         let resolvedIdlePoll: TimeInterval = {
             if let raw = environment["HEIDRUN_IDLE_AWAY_POLL"], let parsed = Int(raw), parsed > 0 {
                 return TimeInterval(parsed)
@@ -475,7 +536,11 @@ public struct ServerConfigurationFile: Codable, Sendable {
             auditLogEnabled: resolvedAuditEnabled,
             auditDBPath: resolvedAuditDBPath,
             auditRetentionDays: resolvedAuditRetentionDays,
-            logIPAddresses: resolvedLogIP
+            logIPAddresses: resolvedLogIP,
+            operationalLogEnabled: resolvedOpLogEnabled,
+            operationalLogPath: resolvedOpLogPath,
+            operationalLogMaxBytes: resolvedOpLogMaxBytes,
+            operationalLogKeep: resolvedOpLogKeep
         )
     }
 }

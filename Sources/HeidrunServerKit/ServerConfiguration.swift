@@ -187,6 +187,26 @@ public struct ServerConfiguration: Sendable {
     /// `log_ip_addresses`; env: `HEIDRUN_LOG_IP_ADDRESSES`.
     public var logIPAddresses: Bool
 
+    /// Master switch for the operational-log file sink (every swift-log line
+    /// → `<db>.oplog.ndjson`, in addition to stderr/`docker logs`). Lets
+    /// `heidrun-admin log` follow the operational stream off the shared
+    /// volume. Default `true`. Config: `operational_log_enabled`; env:
+    /// `HEIDRUN_OP_LOG_ENABLED`.
+    public var operationalLogEnabled: Bool
+
+    /// On-disk NDJSON path for the operational log. `nil` = no file sink
+    /// (stderr only). When unset in config it is derived as a
+    /// `<db>.oplog.ndjson` sibling of `accountStorePath`.
+    public var operationalLogPath: String?
+
+    /// Active-file size threshold (bytes) before rotation. Default 10 MB.
+    /// Config: `operational_log_max_bytes`; env: `HEIDRUN_OP_LOG_MAX_BYTES`.
+    public var operationalLogMaxBytes: Int
+
+    /// Rotated archives to keep (`.1`…`.N`). Default 5. Config:
+    /// `operational_log_keep`; env: `HEIDRUN_OP_LOG_KEEP`.
+    public var operationalLogKeep: Int
+
     public init(
         port: UInt16 = 5500,
         bindHost: String = "0.0.0.0",
@@ -219,7 +239,11 @@ public struct ServerConfiguration: Sendable {
         auditLogEnabled: Bool = true,
         auditDBPath: String? = nil,
         auditRetentionDays: Int = 90,
-        logIPAddresses: Bool = false
+        logIPAddresses: Bool = false,
+        operationalLogEnabled: Bool = true,
+        operationalLogPath: String? = nil,
+        operationalLogMaxBytes: Int = 10_000_000,
+        operationalLogKeep: Int = 5
     ) {
         self.port = port
         self.bindHost = bindHost
@@ -253,5 +277,9 @@ public struct ServerConfiguration: Sendable {
         self.auditDBPath = auditDBPath
         self.auditRetentionDays = auditRetentionDays
         self.logIPAddresses = logIPAddresses
+        self.operationalLogEnabled = operationalLogEnabled
+        self.operationalLogPath = operationalLogPath
+        self.operationalLogMaxBytes = operationalLogMaxBytes
+        self.operationalLogKeep = operationalLogKeep
     }
 }

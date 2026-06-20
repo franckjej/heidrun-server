@@ -175,3 +175,37 @@ struct ServerConfigurationFileTests {
         #expect(file.resolved(environment: [:]).auditLogEnabled == false)
     }
 }
+
+@Suite("op-log config")
+struct OperationalLogConfigTests {
+    @Test("defaults: enabled, derived <db>.oplog.ndjson, 10MB, keep 5")
+    func defaults() {
+        let file = ServerConfigurationFile(dbPath: "/var/lib/heidrun/heidrun.sqlite")
+        let resolved = file.resolved(environment: [:])
+        #expect(resolved.operationalLogEnabled == true)
+        #expect(resolved.operationalLogPath == "/var/lib/heidrun/heidrun.oplog.ndjson")
+        #expect(resolved.operationalLogMaxBytes == 10_000_000)
+        #expect(resolved.operationalLogKeep == 5)
+    }
+
+    @Test("env overrides win over file and derivation")
+    func envOverrides() {
+        let file = ServerConfigurationFile(dbPath: "/var/lib/heidrun/heidrun.sqlite")
+        let resolved = file.resolved(environment: [
+            "HEIDRUN_OP_LOG_ENABLED": "off",
+            "HEIDRUN_OP_LOG_PATH": "/tmp/custom.ndjson",
+            "HEIDRUN_OP_LOG_MAX_BYTES": "2048",
+            "HEIDRUN_OP_LOG_KEEP": "3"
+        ])
+        #expect(resolved.operationalLogEnabled == false)
+        #expect(resolved.operationalLogPath == "/tmp/custom.ndjson")
+        #expect(resolved.operationalLogMaxBytes == 2048)
+        #expect(resolved.operationalLogKeep == 3)
+    }
+
+    @Test("no db path → nil op-log path")
+    func noDBPath() {
+        let resolved = ServerConfigurationFile().resolved(environment: [:])
+        #expect(resolved.operationalLogPath == nil)
+    }
+}
