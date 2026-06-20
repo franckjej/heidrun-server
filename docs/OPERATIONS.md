@@ -378,6 +378,19 @@ The operational-log file is bounded by size rotation (default 10 MB × 5
 archives). Disable it with `operational_log_enabled = false` /
 `HEIDRUN_OP_LOG_ENABLED=off`; `heidrun-admin log` then streams audit events only.
 
+> **Privacy note.** The operational-log file contains the same detail the
+> server prints to stderr / `docker logs` — including client **IP addresses**
+> — and persists it on the shared volume across rotated archives
+> (`operational_log_keep`). This is independent of the audit log's
+> `log_ip_addresses` setting (which stays off by default and only governs IPs
+> stored in `audit_events`). If retaining client IPs on disk is a concern,
+> set `operational_log_enabled = false` (or `HEIDRUN_OP_LOG_ENABLED=off`) —
+> `heidrun-admin log` then streams audit events only — or shorten retention by
+> lowering `operational_log_keep` / `operational_log_max_bytes`. Note that
+> Docker's own `json-file` log driver already persists the same stderr stream
+> by default, so disabling this sink alone does not stop IP retention via
+> `docker logs`.
+
 ## Local administration (`heidrun-admin`)
 
 `heidrun-admin` administers the server's SQLite/news state directly — no

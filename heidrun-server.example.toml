@@ -95,6 +95,7 @@ files_root = "/var/lib/heidrun/files"
 # log_ip_addresses = false
 
 # --- Operational log -------------------------------------------------------
+# Note: this file includes client IPs (like docker logs). See OPERATIONS.md.
 # NDJSON file sink written alongside stderr so `heidrun-admin log` can follow
 # the operational stream off the shared volume. stderr / docker logs are
 # unchanged — this is an additional sink, not a replacement.
