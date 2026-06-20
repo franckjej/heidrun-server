@@ -342,6 +342,42 @@ untouched.
 schema is one `audit_events` table indexed on `ts`, `(type, ts)`, and
 `(account, ts)`.
 
+### Streaming the log (`heidrun-admin log`)
+
+`heidrun-admin log` is the native alternative to `docker logs`: it merges the
+structured audit events (joins, transfers, logins, admin actions) with the
+server's operational log lines into one live, timestamp-ordered stream.
+
+The operational lines come from an NDJSON file sink the server writes
+alongside stderr (`<db_path>.oplog.ndjson` on the shared volume). stderr /
+`docker logs` is unchanged — the file is an *additional* sink so `heidrun-admin`
+can read the stream off the volume.
+
+```bash
+# Last 50 merged records, then exit (a tail):
+docker compose exec heidrun heidrun-admin log
+
+# Follow live until Ctrl-C:
+docker compose exec heidrun heidrun-admin log -f
+
+# Only warnings and above from the operational side:
+docker compose exec heidrun heidrun-admin log -f --source op --level warning
+
+# Only one account's audit trail:
+docker compose exec heidrun heidrun-admin log -f --source audit --account alice
+
+# Machine-readable:
+docker compose exec heidrun heidrun-admin log -f --json
+```
+
+Flags: `-f/--follow`, `--lines N` (backfill, default 50), `--source audit|op|both`,
+`--account <login>`, `--level <trace…critical>`, `--type transfer|auth|admin|presence|<kind>`,
+`--interval <ms>` (follow poll, default 500), `--op-log-path <path>`, `--json`.
+
+The operational-log file is bounded by size rotation (default 10 MB × 5
+archives). Disable it with `operational_log_enabled = false` /
+`HEIDRUN_OP_LOG_ENABLED=off`; `heidrun-admin log` then streams audit events only.
+
 ## Local administration (`heidrun-admin`)
 
 `heidrun-admin` administers the server's SQLite/news state directly — no

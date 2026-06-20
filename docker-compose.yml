@@ -225,6 +225,21 @@ services:
       # HEIDRUN_LOG_IP_ADDRESSES: "1"
 
       # ---------------------------------------------------------------
+      # OPERATIONAL LOG FILE SINK
+      # ---------------------------------------------------------------
+      #
+      # NDJSON file written alongside stderr so `heidrun-admin log` can
+      # follow the operational stream off the shared volume. stderr /
+      # docker logs are unchanged — this is an additional sink.
+      # On by default; disable to drop the file and stream audit events only.
+
+      # Operational log file sink (for `heidrun-admin log`). On by default.
+      # HEIDRUN_OP_LOG_ENABLED: "true"
+      # HEIDRUN_OP_LOG_PATH: "/var/lib/heidrun/heidrun.oplog.ndjson"
+      # HEIDRUN_OP_LOG_MAX_BYTES: "10000000"
+      # HEIDRUN_OP_LOG_KEEP: "5"
+
+      # ---------------------------------------------------------------
       # TRACKER REGISTRATION (host[:port][:password])
       # ---------------------------------------------------------------
 

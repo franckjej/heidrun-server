@@ -94,6 +94,28 @@ files_root = "/var/lib/heidrun/files"
 # Env: HEIDRUN_LOG_IP_ADDRESSES ("1/true/yes/on" enables).
 # log_ip_addresses = false
 
+# --- Operational log -------------------------------------------------------
+# NDJSON file sink written alongside stderr so `heidrun-admin log` can follow
+# the operational stream off the shared volume. stderr / docker logs are
+# unchanged — this is an additional sink, not a replacement.
+#
+# Master switch. true (default) writes the NDJSON file; false disables the
+# file sink (docker logs / stderr still work). Env: HEIDRUN_OP_LOG_ENABLED
+# ("0/false/no/off" disables).
+# operational_log_enabled = true
+
+# NDJSON log file path. Omit to derive "<db_path>.oplog.ndjson" automatically.
+# Env: HEIDRUN_OP_LOG_PATH.
+# operational_log_path = "/var/lib/heidrun/heidrun.oplog.ndjson"
+
+# Rotate the active file when it reaches this many bytes (~10 MB default).
+# Env: HEIDRUN_OP_LOG_MAX_BYTES.
+# operational_log_max_bytes = 10000000
+
+# Number of rotated archives to keep (.1 … .N). Default 5. Env:
+# HEIDRUN_OP_LOG_KEEP.
+# operational_log_keep = 5
+
 # HXD-style "User Access" push (TX 354) after login: sends the connected
 # user's privileges bitmap so strict third-party clients (gtkhx, etc.)
 # can configure their admin UI up front. Privileges stay server-enforced
