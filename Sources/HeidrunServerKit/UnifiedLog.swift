@@ -35,13 +35,17 @@ public struct UnifiedLogRecord: Sendable, Equatable {
         let who = event.account ?? event.nickname ?? "—"
         let target = event.target.map { " → \($0)" } ?? ""
         let detail = event.detail.map { " (\($0))" } ?? ""
+        var metadata: [String: String] = [:]
+        if let ip = event.ip { metadata["remoteHost"] = ip }
+        if let nickname = event.nickname { metadata["nickname"] = nickname }
+        if let socket = event.socket { metadata["socketID"] = "\(socket)" }
         self.init(
             timestampMillis: Int64(event.timestamp.timeIntervalSince1970 * 1000),
             source: .audit,
             tag: event.kind.rawValue,
             text: "\(who)\(target)\(detail)",
             account: event.account,
-            metadata: event.ip.map { ["remoteHost": $0] } ?? [:]
+            metadata: metadata
         )
     }
 

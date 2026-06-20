@@ -5,6 +5,28 @@ import Logging
 
 @Suite("UnifiedLogRecord")
 struct UnifiedLogRecordTests {
+    @Test("audit record carries nickname, socket and ip into metadata")
+    func auditMetadataEnriched() {
+        let event = AuditEvent(
+            timestamp: Date(timeIntervalSince1970: 1700), kind: .join,
+            account: "alice", nickname: "ali", socket: 42, ip: "203.0.113.7",
+            target: nil, bytes: nil, result: nil, detail: nil)
+        let record = UnifiedLogRecord(audit: IdentifiedAuditEvent(id: 1, event: event))
+        #expect(record.metadata["nickname"] == "ali")
+        #expect(record.metadata["socketID"] == "42")
+        #expect(record.metadata["remoteHost"] == "203.0.113.7")
+    }
+
+    @Test("audit record omits absent metadata keys")
+    func auditMetadataOmitsAbsent() {
+        let event = AuditEvent(
+            timestamp: Date(timeIntervalSince1970: 1700), kind: .leave,
+            account: nil, nickname: nil, socket: nil, ip: nil,
+            target: nil, bytes: nil, result: nil, detail: nil)
+        let record = UnifiedLogRecord(audit: IdentifiedAuditEvent(id: 2, event: event))
+        #expect(record.metadata.isEmpty)
+    }
+
     @Test("maps an audit event to a unified record")
     func fromAudit() {
         let event = AuditEvent(
