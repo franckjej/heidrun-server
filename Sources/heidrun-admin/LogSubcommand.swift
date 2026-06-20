@@ -22,9 +22,13 @@ struct Log: AsyncParsableCommand {
     @Option(help: "Follow poll interval in milliseconds.") var interval = 500
     @Option(help: "Override the op-log NDJSON path.") var opLogPath: String?
     @Flag(help: "Emit JSON.") var json = false
+    @Flag(help: "Render as an aligned fixed-width table.") var table = false
 
     func run() async throws {
         let configuration = try global.resolvedConfiguration()
+        if table, json {
+            throw ValidationError("--table and --json are mutually exclusive.")
+        }
         let sourceFilter = UnifiedLogFilter.SourceFilter(parsing: source)
         let minLevel = level.flatMap { Logger.Level(rawValue: $0.lowercased()) }
         let auditKinds: [String]? = try type.map { keyword in
@@ -49,6 +53,7 @@ struct Log: AsyncParsableCommand {
             UnifiedLogFilter.matches(record, sourceFilter: sourceFilter,
                                      user: user, minLevel: minLevel, auditKinds: auditKinds)
         }
+        var headerShown = false
         func render(_ records: [UnifiedLogRecord]) {
             let kept = records.filter(passes)
             guard !kept.isEmpty else { return }
@@ -56,6 +61,12 @@ struct Log: AsyncParsableCommand {
                 for record in kept {
                     if let text = try? AdminFormat.json(UnifiedLogLineDTO(record)) { print(text) }
                 }
+            } else if table {
+                if !headerShown {
+                    print(UnifiedLogTableFormatter.header())
+                    headerShown = true
+                }
+                print(UnifiedLogTableFormatter.rows(kept))
             } else {
                 print(UnifiedLogFormatter.lines(kept))
             }
