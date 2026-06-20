@@ -7,39 +7,50 @@ enum HeidrunServerExecutable {
     static func main() async {
         let environment = ProcessInfo.processInfo.environment
 
-        // Bootstrap swift-log before anything else logs. Default level
-        // is `info` for production; override with HEIDRUN_LOG_LEVEL
+        // Default level is `info`; override with HEIDRUN_LOG_LEVEL
         // (case-insensitive: trace, debug, info, notice, warning, error,
         // critical).
         let logLevel = environment["HEIDRUN_LOG_LEVEL"]
             .flatMap { Logger.Level(rawValue: $0.lowercased()) }
             ?? .info
-        LoggingSystem.bootstrap { label in
-            var handler = StreamLogHandler.standardError(label: label)
-            handler.logLevel = logLevel
-            return handler
-        }
 
-        // Resolve config: HEIDRUN_CONFIG points at a TOML file, env
-        // vars layer on top. Without HEIDRUN_CONFIG the file shape
-        // collapses to "everything defaulted" and env vars are the
-        // sole source — same behaviour as before M4.
+        // Resolve config BEFORE bootstrapping logging: the operational-log
+        // file sink path comes from the resolved configuration. Until
+        // bootstrap runs, swift-log's default handler writes to stderr, so
+        // the early config-load failure below is still visible.
         let configFile: ServerConfigurationFile
         if let configPath = environment["HEIDRUN_CONFIG"] {
             do {
                 configFile = try ServerConfigurationFile.load(from: configPath)
-                serverLogger.info("loaded config", metadata: ["path": "\(configPath)"])
             } catch {
-                serverLogger.critical("failed to load HEIDRUN_CONFIG", metadata: [
-                    "path": "\(configPath)",
-                    "error": "\(error)"
-                ])
+                FileHandle.standardError.write(Data(
+                    "critical: failed to load HEIDRUN_CONFIG \(configPath): \(error)\n".utf8))
                 exit(1)
             }
         } else {
             configFile = ServerConfigurationFile()
         }
         let configuration = configFile.resolved(environment: environment)
+
+        // Operational-log file sink (in addition to stderr) when enabled and a
+        // path resolved. `docker logs` output is unchanged either way.
+        let operationalLogWriter: NDJSONLogWriter? = {
+            guard configuration.operationalLogEnabled,
+                  let path = configuration.operationalLogPath else { return nil }
+            return NDJSONLogWriter(
+                path: path,
+                maxBytes: configuration.operationalLogMaxBytes,
+                keep: configuration.operationalLogKeep)
+        }()
+        LoggingSystem.bootstrap { label in
+            OperationalLogging.handler(label: label, level: logLevel, writer: operationalLogWriter)
+        }
+        if let configPath = environment["HEIDRUN_CONFIG"] {
+            serverLogger.info("loaded config", metadata: ["path": "\(configPath)"])
+        }
+        if let path = configuration.operationalLogPath, operationalLogWriter != nil {
+            serverLogger.info("operational log file", metadata: ["path": "\(path)"])
+        }
 
         let server = HeidrunServer(configuration: configuration)
 
