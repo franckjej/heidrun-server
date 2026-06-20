@@ -476,6 +476,7 @@ public struct ServerConfigurationFile: Codable, Sendable {
             }
             return operationalLogEnabled ?? true
         }()
+        // Op-log path — env > file > derived `<db>.oplog.ndjson` sibling.
         let resolvedOpLogPath: String? = {
             if let raw = environment["HEIDRUN_OP_LOG_PATH"] { return raw }
             if let explicit = operationalLogPath { return explicit }
@@ -485,12 +486,14 @@ public struct ServerConfigurationFile: Codable, Sendable {
                 .appendingPathExtension("oplog.ndjson")
                 .path
         }()
+        // Op-log rotation size — env wins; clamp to ≥ 1 KiB; default 10 MB.
         let resolvedOpLogMaxBytes: Int = {
             if let raw = environment["HEIDRUN_OP_LOG_MAX_BYTES"], let parsed = Int(raw) {
                 return max(1_024, parsed)
             }
             return max(1_024, operationalLogMaxBytes ?? 10_000_000)
         }()
+        // Op-log archives to keep — env wins; clamp to ≥ 1; default 5.
         let resolvedOpLogKeep: Int = {
             if let raw = environment["HEIDRUN_OP_LOG_KEEP"], let parsed = Int(raw) {
                 return max(1, parsed)

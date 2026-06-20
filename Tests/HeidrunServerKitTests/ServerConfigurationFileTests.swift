@@ -208,4 +208,18 @@ struct OperationalLogConfigTests {
         let resolved = ServerConfigurationFile().resolved(environment: [:])
         #expect(resolved.operationalLogPath == nil)
     }
+
+    @Test("max-bytes below the 1 KiB floor is clamped up")
+    func clampsMaxBytes() {
+        let file = ServerConfigurationFile(dbPath: "/db.sqlite")
+        let resolved = file.resolved(environment: ["HEIDRUN_OP_LOG_MAX_BYTES": "512"])
+        #expect(resolved.operationalLogMaxBytes == 1_024)
+    }
+
+    @Test("keep below 1 is clamped up to 1")
+    func clampsKeep() {
+        let file = ServerConfigurationFile(dbPath: "/db.sqlite")
+        let resolved = file.resolved(environment: ["HEIDRUN_OP_LOG_KEEP": "0"])
+        #expect(resolved.operationalLogKeep == 1)
+    }
 }
