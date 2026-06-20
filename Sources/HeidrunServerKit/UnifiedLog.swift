@@ -144,8 +144,10 @@ public struct UnifiedLogLineDTO: Encodable {
     public let text: String
     public let account: String?
 
+    private nonisolated(unsafe) static let isoFormatter = ISO8601DateFormatter()
+
     public init(_ record: UnifiedLogRecord) {
-        self.timestamp = ISO8601DateFormatter().string(
+        self.timestamp = Self.isoFormatter.string(
             from: Date(timeIntervalSince1970: TimeInterval(record.timestampMillis) / 1000))
         self.source = record.source.rawValue
         self.tag = record.tag

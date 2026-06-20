@@ -80,6 +80,12 @@ struct UnifiedLogFilterTests {
         #expect(UnifiedLogFilter.matches(audit("join", account: nil), sourceFilter: .both, user: nil, minLevel: .warning, auditKinds: nil))
     }
 
+    @Test("a user filter excludes op rows (they carry no account)")
+    func userFilterExcludesOp() {
+        #expect(!UnifiedLogFilter.matches(op("info"), sourceFilter: .both, user: "bob", minLevel: nil, auditKinds: nil))
+        #expect(UnifiedLogFilter.matches(audit("join", account: "bob"), sourceFilter: .both, user: "bob", minLevel: nil, auditKinds: nil))
+    }
+
     @Test("user filter matches the account; audit kind filter matches the tag")
     func userAndKind() {
         #expect(UnifiedLogFilter.matches(audit("login_ok", account: "bob"), sourceFilter: .both, user: "bob", minLevel: nil, auditKinds: nil))
