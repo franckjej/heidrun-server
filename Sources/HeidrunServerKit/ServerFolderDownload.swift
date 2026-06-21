@@ -118,10 +118,22 @@ enum ServerFolderDownload {
         )
     }
 
+    /// Write `bytes` to the channel in ≤64 KiB chunks. NIO's `ByteBuffer`
+    /// is bounded by a 32-bit index, so a single buffer cannot hold a
+    /// >4 GiB framed envelope — writing it whole traps inside NIO. The
+    /// wire bytes are identical regardless of how they're split across
+    /// flushes. Small payloads (item headers, the size prefix) fall
+    /// through the loop as one write.
     private static func send(bytes: Data, on channel: any Channel) async throws {
-        var buffer = channel.allocator.buffer(capacity: bytes.count)
-        buffer.writeBytes(bytes)
-        try await channel.writeAndFlush(buffer).get()
+        let chunkSize = 64 * 1024
+        var current = bytes.startIndex
+        while current < bytes.endIndex {
+            let end = bytes.index(current, offsetBy: chunkSize, limitedBy: bytes.endIndex) ?? bytes.endIndex
+            var buffer = channel.allocator.buffer(capacity: end - current)
+            buffer.writeBytes(bytes[current..<end])
+            try await channel.writeAndFlush(buffer).get()
+            current = end
+        }
     }
 
     private static func readUInt16(_ data: Data) -> UInt16 {
