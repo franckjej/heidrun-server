@@ -1,5 +1,5 @@
 {
-  "originHash" : "28b94ff0bb5a81afe95c4a9df2856070f4a77d3321e8c13b9dbf3e6b4219c7e3",
+  "originHash" : "afe745c16c18fcc1c407860c71ff5f8fb337f6658fe8a521b0394e37fa631781",
   "pins" : [
     {
       "identity" : "grdb.swift",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "36e30a6f1ef10e4194f6af0cff90888526f0c115",
         "version" : "7.10.0"
+      }
+    },
+    {
+      "identity" : "heidrun-protocol",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/franckjej/heidrun-protocol.git",
+      "state" : {
+        "revision" : "4e04a8600bcd69f7101dd90f01b8089b773293c4",
+        "version" : "1.0.0-rc27"
       }
     },
     {
