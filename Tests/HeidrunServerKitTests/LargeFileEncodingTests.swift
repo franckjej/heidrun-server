@@ -113,4 +113,61 @@ struct LargeFileEncodingTests {
         #expect(fields.uint32(.transferSize) == 1234)
         #expect(fields.first(.xferSize64) == nil)
     }
+
+    // MARK: - Task 13: registry + 24-byte handshake
+
+    @Test("registerUpload round-trips a declaredSize above 4 GiB")
+    func uploadRegistryRoundTrip() async {
+        let bigSize: UInt64 = 5_000_000_000 // ~4.66 GiB
+        let registry = TransferRegistry()
+        let transferID = await registry.registerUpload(
+            path: ["files"],
+            name: "movie.mov",
+            declaredSize: bigSize,
+            resume: false
+        )
+        let claimed = await registry.claim(transferID: transferID)
+        guard case let .upload(_, name, declaredSize, resume) = claimed else {
+            Issue.record("expected an .upload pending, got \(String(describing: claimed))")
+            return
+        }
+        #expect(name == "movie.mov")
+        #expect(declaredSize == bigSize)
+        #expect(resume == false)
+    }
+
+    @Test("registerDownload round-trips an offset above 4 GiB")
+    func downloadRegistryRoundTrip() async {
+        let bigOffset: UInt64 = 0x1_0000_0000
+        let registry = TransferRegistry()
+        let transferID = await registry.registerDownload(bytes: Data([1, 2, 3]), offset: bigOffset)
+        let claimed = await registry.claim(transferID: transferID)
+        guard case let .download(_, offset) = claimed else {
+            Issue.record("expected a .download pending, got \(String(describing: claimed))")
+            return
+        }
+        #expect(offset == bigOffset)
+    }
+
+    @Test("a 24-byte large-file HTXF preamble parses to the right id + size")
+    func largeFilePreambleParses() {
+        let transferID: UInt32 = 0xABCD_1234
+        let bigSize: UInt64 = 6_000_000_000
+        let preamble = TransferHandshake.encodeLargeFile(transferID: transferID, size: bigSize)
+        #expect(preamble.count == TransferHandshake.largeFileByteCount)
+        let parsed = TransferHandshake.parse(preamble)
+        #expect(parsed?.transferID == transferID)
+        #expect(parsed?.size == bigSize)
+        #expect(parsed?.isLargeFile == true)
+    }
+
+    @Test("a legacy 16-byte HTXF preamble still parses to its transferID")
+    func legacyPreambleParses() {
+        let transferID: UInt32 = 7
+        let preamble = TransferHandshake.encode(transferID: transferID, transferSize: 100)
+        #expect(preamble.count == TransferHandshake.byteCount)
+        let parsed = TransferHandshake.parse(preamble)
+        #expect(parsed?.transferID == transferID)
+        #expect(parsed?.isLargeFile == false)
+    }
 }

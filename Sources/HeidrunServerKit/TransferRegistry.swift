@@ -11,7 +11,7 @@ import Foundation
 /// entry is removed on retrieval so duplicate handshakes fail clean.
 public actor TransferRegistry {
     public enum Pending: Sendable {
-        case download(bytes: Data, offset: UInt32)
+        case download(bytes: Data, offset: UInt64)
         /// Pre-assembled FILP/INFO/DATA/MACR envelope for a single-file
         /// download against a session that negotiated
         /// `resourceForkSupport` (Heidrun extension 0xE002). Built once
@@ -19,7 +19,7 @@ public actor TransferRegistry {
         /// channel — the HTXF handler doesn't need to know about
         /// framing, it just writes the bytes.
         case framedDownload(envelope: Data)
-        case upload(path: [String], name: String, declaredSize: UInt32, resume: Bool)
+        case upload(path: [String], name: String, declaredSize: UInt64, resume: Bool)
         /// Server-driven folder download — the enumerated items live
         /// in-memory the same way single-file downloads do (read once
         /// at handler time, replayed on the side channel).
@@ -40,7 +40,7 @@ public actor TransferRegistry {
 
     /// Register a pending download. Returns the allocated transferID
     /// that the control-channel reply carries back to the client.
-    public func registerDownload(bytes: Data, offset: UInt32) -> UInt32 {
+    public func registerDownload(bytes: Data, offset: UInt64) -> UInt32 {
         let assigned = nextID
         nextID &+= 1
         if nextID == 0 { nextID = 1 }                    // skip 0; treat as "no transfer"
@@ -64,7 +64,7 @@ public actor TransferRegistry {
     public func registerUpload(
         path: [String],
         name: String,
-        declaredSize: UInt32,
+        declaredSize: UInt64,
         resume: Bool
     ) -> UInt32 {
         let assigned = nextID

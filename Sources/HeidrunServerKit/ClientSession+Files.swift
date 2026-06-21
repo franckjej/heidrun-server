@@ -65,12 +65,15 @@ extension ClientSession {
             ))
             return
         }
-        var offset: UInt32 = 0
+        var legacyResumeOffset: UInt32 = 0
         if let resumeField = fields.first(.fileResumeInfo),
            let info = ResumeInfoCodec.decode(resumeField.data) {
-            offset = info.dataForkOffset
+            legacyResumeOffset = info.dataForkOffset
         }
-        let remaining = UInt32(clamping: max(0, bytes.count - Int(offset)))
+        // Large-file clients carry the resume offset as a 64-bit field;
+        // fall back to the 32-bit legacy ResumeInfo offset otherwise.
+        let offset: UInt64 = fields.uint64(.offset64) ?? UInt64(legacyResumeOffset)
+        let remaining: UInt64 = offset >= UInt64(bytes.count) ? 0 : UInt64(bytes.count) - offset
 
         // Negotiated single-file framing only kicks in for fresh
         // downloads — resume + framing isn't a supported combo (the
@@ -92,10 +95,12 @@ extension ClientSession {
             )
             let transferID = await transfers.registerFramedDownload(envelope: envelope)
             await audit(.download, target: name, bytes: Int64(envelope.count), result: "granted")
+            let envelopeSize = UInt64(envelope.count)
             try? await writer(PacketEncoder.downloadFileReply(
                 taskNumber: header.taskNumber,
                 transferID: transferID,
-                transferSize: UInt32(clamping: envelope.count)
+                transferSize: UInt32(clamping: envelopeSize),
+                size64: largeFiles && envelopeSize > 0xFFFF_FFFF ? envelopeSize : nil
             ))
             return
         }
@@ -105,7 +110,8 @@ extension ClientSession {
         try? await writer(PacketEncoder.downloadFileReply(
             taskNumber: header.taskNumber,
             transferID: transferID,
-            transferSize: remaining
+            transferSize: UInt32(clamping: remaining),
+            size64: largeFiles && remaining > 0xFFFF_FFFF ? remaining : nil
         ))
     }
 
@@ -251,7 +257,9 @@ extension ClientSession {
             await denyPrivilege(taskNumber: header.taskNumber, transactionID: 203, privilege: "uploadFiles")
             return
         }
-        let declaredSize = fields.uint32(.transferSize) ?? 0
+        // Large-file clients declare the upload size as a 64-bit field;
+        // fall back to the legacy 32-bit transferSize otherwise.
+        let declaredSize = fields.uint64(.xferSize64) ?? UInt64(fields.uint32(.transferSize) ?? 0)
         let resume = (fields.uint16(.parameter) ?? 0) == 1
 
         if !resume, await files.info(at: path, name: name) != nil {

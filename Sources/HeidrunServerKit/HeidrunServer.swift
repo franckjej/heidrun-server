@@ -673,7 +673,7 @@ public actor HeidrunServer {
         var stream = ByteStream(source: inbound)
         defer { Task { try? await channelBox.value.close().get() } }
 
-        let preamble: Data
+        var preamble: Data
         do {
             preamble = try await stream.receiveExactly(16)
         } catch {
@@ -681,16 +681,26 @@ public actor HeidrunServer {
         }
         // Magic: "HTXF" (0x48 0x54 0x58 0x46)
         guard preamble.prefix(4) == Data([0x48, 0x54, 0x58, 0x46]) else { return }
-        let base = preamble.startIndex
-        let transferID = UInt32(preamble[base + 4]) << 24
-            | UInt32(preamble[base + 5]) << 16
-            | UInt32(preamble[base + 6]) << 8
-            | UInt32(preamble[base + 7])
-        // Bytes [8..11] are the outer HTXF `transferSize` field. The
-        // upload path used to consult it as a fallback when no inner
-        // re-handshake arrived, but the new envelope-driven reader
-        // sizes each read from the FILP/INFO/DATA/MACR length fields,
-        // so the outer transferSize is now ignored.
+        // Bytes [12..15] are the flags slot: 0 on the legacy 16-byte
+        // handshake (the `reserved` field), flagLargeFile|flagSize64 on
+        // the 24-byte large-file variant. When flagSize64 is set, an
+        // 8-byte UInt64 size follows that we still need to read.
+        let flagBytes = preamble[preamble.startIndex + 12 ..< preamble.startIndex + 16]
+        let flags = flagBytes.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+        if flags & TransferHandshake.flagSize64 != 0 {
+            do {
+                let sizeTail = try await stream.receiveExactly(8)
+                preamble.append(sizeTail)
+            } catch {
+                return
+            }
+        }
+        // Parse the full (16- or 24-byte) handshake for the transferID.
+        // The outer `transferSize` / 64-bit size is informational only:
+        // downloads already know the byte count and the upload reader
+        // sizes each fork from the FILP/INFO/DATA/MACR length fields.
+        guard let parsed = TransferHandshake.parse(preamble) else { return }
+        let transferID = parsed.transferID
         guard let pending = await transfers.claim(transferID: transferID) else { return }
         switch pending {
         case let .banner(bytes):
@@ -726,7 +736,7 @@ public actor HeidrunServer {
             return
         case let .download(bytes, offset):
             let outChannel = channelBox.value
-            let start = min(Int(offset), bytes.count)
+            let start = min(Int(clamping: offset), bytes.count)
             let tail = bytes.suffix(from: bytes.startIndex.advanced(by: start))
             let chunkSize = 16 * 1024
             var current = tail.startIndex
