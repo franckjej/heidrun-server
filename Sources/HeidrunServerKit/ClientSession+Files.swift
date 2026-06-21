@@ -173,22 +173,28 @@ extension ClientSession {
             ))
             return
         }
-        let totalSize = items.reduce(UInt32(0)) { running, item in
+        // Per-item size prefix is 8 bytes (UInt64) on a large-file
+        // session, else the legacy 4 bytes (UInt32). Accumulate in
+        // UInt64 so a >4 GiB item (or aggregate) doesn't trap/wrap.
+        let prefixBytes: UInt64 = largeFiles ? 8 : 4
+        let totalSize = items.reduce(UInt64(0)) { running, item in
             guard !item.isDirectory else { return running }
             let nameBytes = (item.relativePath.last ?? "")
                 .data(using: stringEncoding, allowLossyConversion: true) ?? Data()
             let per = UploadFraming.totalSize(
                 nameLength: nameBytes.count,
-                dataLength: UInt32(item.data.count)
+                dataLength: UInt64(item.data.count),
+                resourceLength: UInt64(item.resourceFork.count)
             )
-            return running &+ per &+ 4    // 4 bytes for the UInt32 itemFileSize prefix
+            return running + per + prefixBytes
         }
-        let transferID = await transfers.registerFolderDownload(items: items)
+        let transferID = await transfers.registerFolderDownload(items: items, largeFile: largeFiles)
         await audit(.download, target: name, result: "granted", detail: "folder")
         try? await writer(PacketEncoder.downloadFileReply(
             taskNumber: header.taskNumber,
             transferID: transferID,
-            transferSize: totalSize
+            transferSize: UInt32(clamping: totalSize),
+            size64: largeFiles && totalSize > 0xFFFF_FFFF ? totalSize : nil
         ))
     }
 
@@ -217,7 +223,8 @@ extension ClientSession {
         let transferID = await transfers.registerFolderUpload(
             path: path,
             name: name,
-            itemCount: itemCount
+            itemCount: itemCount,
+            largeFile: largeFiles
         )
         await audit(.upload, target: name, result: "granted", detail: "folder")
         serverLogger.info("folder upload accepted", metadata: [

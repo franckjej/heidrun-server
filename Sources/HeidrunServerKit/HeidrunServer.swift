@@ -715,15 +715,16 @@ public actor HeidrunServer {
                 current = end
             }
             return
-        case let .folderDownload(items):
+        case let .folderDownload(items, largeFile):
             await ServerFolderDownload.drive(
                 stream: &stream,
                 outChannel: channelBox.value,
                 items: items,
+                largeFile: largeFile,
                 encoding: String.Encoding.macOSRoman
             )
             return
-        case let .folderUpload(path, name, itemCount):
+        case let .folderUpload(path, name, itemCount, largeFile):
             await ServerFolderUpload.drain(
                 stream: &stream,
                 outChannel: channelBox.value,
@@ -731,6 +732,7 @@ public actor HeidrunServer {
                 path: path,
                 name: name,
                 itemCount: itemCount,
+                largeFile: largeFile,
                 encoding: String.Encoding.macOSRoman
             )
             return
