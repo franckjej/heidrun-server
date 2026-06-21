@@ -22,11 +22,14 @@ public actor TransferRegistry {
         case upload(path: [String], name: String, declaredSize: UInt64, resume: Bool)
         /// Server-driven folder download — the enumerated items live
         /// in-memory the same way single-file downloads do (read once
-        /// at handler time, replayed on the side channel).
-        case folderDownload(items: [FileVault.FolderItem])
+        /// at handler time, replayed on the side channel). `largeFile`
+        /// gates the per-item size prefix on the 8-byte UInt64 form so a
+        /// >4 GiB item (or total) survives the stream.
+        case folderDownload(items: [FileVault.FolderItem], largeFile: Bool)
         /// Client-driven folder upload — server drains items into the
         /// vault under `(path, name)` for `itemCount` iterations.
-        case folderUpload(path: [String], name: String, itemCount: UInt16)
+        /// `largeFile` gates the per-item size prefix the drain reads.
+        case folderUpload(path: [String], name: String, itemCount: UInt16, largeFile: Bool)
         /// Server banner download (transID 212). Carries the cached
         /// banner bytes the operator configured at server start —
         /// streamed unchanged over the type=2 HTXF preamble.
@@ -82,11 +85,11 @@ public actor TransferRegistry {
     /// Register a server-driven folder download. The fully-enumerated
     /// item list rides along so the HTXF handler doesn't have to walk
     /// the filesystem again.
-    public func registerFolderDownload(items: [FileVault.FolderItem]) -> UInt32 {
+    public func registerFolderDownload(items: [FileVault.FolderItem], largeFile: Bool) -> UInt32 {
         let assigned = nextID
         nextID &+= 1
         if nextID == 0 { nextID = 1 }
-        pending[assigned] = .folderDownload(items: items)
+        pending[assigned] = .folderDownload(items: items, largeFile: largeFile)
         return assigned
     }
 
@@ -95,12 +98,18 @@ public actor TransferRegistry {
     public func registerFolderUpload(
         path: [String],
         name: String,
-        itemCount: UInt16
+        itemCount: UInt16,
+        largeFile: Bool
     ) -> UInt32 {
         let assigned = nextID
         nextID &+= 1
         if nextID == 0 { nextID = 1 }
-        pending[assigned] = .folderUpload(path: path, name: name, itemCount: itemCount)
+        pending[assigned] = .folderUpload(
+            path: path,
+            name: name,
+            itemCount: itemCount,
+            largeFile: largeFile
+        )
         return assigned
     }
 
