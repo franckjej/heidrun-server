@@ -8,17 +8,32 @@ struct UnifiedLogTableTests {
         UnifiedLogRecord(op: NDJSONLogRecord(
             timestampMillis: 1_700_000, level: "debug", label: "t", message: "dispatch",
             metadata: ["transID": transID, "taskNumber": "3", "socketID": "42",
-                       "nickname": "silver", "tls": "false", "fieldCount": "5",
-                       "remoteHost": "203.0.113.7"],
+                       "nickname": "silver", "login": "silver_box", "isAdmin": "true",
+                       "tls": "false", "fieldCount": "5", "remoteHost": "203.0.113.7"],
             source: "t"))
     }
 
     @Test("header lists the columns including ACTION")
     func header() {
         let header = UnifiedLogTableFormatter.header()
-        for title in ["TIME", "S", "LVL", "HOST", "NICK", "TLS", "TRANS", "SOCK", "TASK", "FLDS", "ACTION"] {
+        for title in ["TIME", "S", "LVL", "HOST", "NICK", "ACCOUNT", "ADMIN",
+                      "TLS", "TRANS", "SOCK", "TASK", "FLDS", "ACTION"] {
             #expect(header.contains(title))
         }
+    }
+
+    @Test("ACCOUNT shows the login; ADMIN renders a compact marker")
+    func accountAndAdmin() {
+        let adminRow = UnifiedLogTableFormatter.row(opDispatch(transID: "107"))
+        #expect(adminRow.contains("silver_box"))   // ACCOUNT = login
+        #expect(adminRow.contains("yes"))           // ADMIN compact marker (isAdmin=true)
+
+        let nonAdmin = UnifiedLogRecord(op: NDJSONLogRecord(
+            timestampMillis: 1_700_000, level: "info", label: "t", message: "dispatch",
+            metadata: ["transID": "300", "login": "guest", "isAdmin": "false"], source: "t"))
+        let nonAdminRow = UnifiedLogTableFormatter.row(nonAdmin)
+        #expect(nonAdminRow.contains("guest"))      // ACCOUNT
+        #expect(!nonAdminRow.contains("yes"))       // ADMIN blank for non-admins
     }
 
     @Test("a dispatch row resolves transID to the transaction name in ACTION")

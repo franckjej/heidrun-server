@@ -445,6 +445,8 @@ public actor ClientSession {
             "taskNumber": "\(header.taskNumber)",
             "socketID": isPreLogin ? "—" : "\(socketID)",
             "nickname": isPreLogin ? "—" : "\(nickname)",
+            "login": isPreLogin ? "—" : "\(authenticatedAccount?.login ?? "—")",
+            "isAdmin": isPreLogin ? "—" : "\(authenticatedAccount?.isAdmin ?? false)",
             "remoteHost": "\(remoteHost ?? "—")",
             "tls": "\(isTLS)",
             "fieldCount": "\(fields.count)"

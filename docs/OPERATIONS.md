@@ -381,7 +381,9 @@ instead of one free-form line per record:
 docker compose exec heidrun heidrun-admin log -f --table --level debug
 ```
 
-Columns: `TIME · S · LVL · HOST · NICK · TLS · TRANS · SOCK · TASK · FLDS · ACTION`.
+Columns: `TIME · S · LVL · HOST · NICK · ACCOUNT · ADMIN · TLS · TRANS · SOCK · TASK · FLDS · ACTION`.
+`NICK` is the display nickname; `ACCOUNT` is the login the user signed on with;
+`ADMIN` shows `yes` for admin accounts (blank otherwise).
 `S` is the source (`a` audit / `o` operational); `ACTION` is a human-readable
 description — for a per-transaction `dispatch` row it shows the transaction
 name resolved from the numeric `TRANS` id (so a row with `TRANS` 107 shows

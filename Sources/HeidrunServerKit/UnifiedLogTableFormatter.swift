@@ -19,6 +19,8 @@ public enum UnifiedLogTableFormatter {
         Column(title: "LVL", width: 7) { $0.source == .op ? $0.tag : "—" },
         Column(title: "HOST", width: 21) { $0.metadata["remoteHost"] ?? "" },
         Column(title: "NICK", width: 10) { $0.metadata["nickname"] ?? $0.account ?? "" },
+        Column(title: "ACCOUNT", width: 12) { $0.metadata["login"] ?? $0.account ?? "" },
+        Column(title: "ADMIN", width: 5) { $0.metadata["isAdmin"] == "true" ? "yes" : "" },
         Column(title: "TLS", width: 5) { $0.metadata["tls"] ?? "" },
         Column(title: "TRANS", width: 5) { $0.metadata["transID"] ?? "" },
         Column(title: "SOCK", width: 5) { $0.metadata["socketID"] ?? "" },
