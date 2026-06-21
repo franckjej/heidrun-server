@@ -28,6 +28,7 @@ enum ServerFolderDownload {
         stream: inout ByteStream<AsyncStream<Data>>,
         outChannel: any Channel,
         items: [FileVault.FolderItem],
+        largeFile: Bool,
         encoding: String.Encoding
     ) async {
         // 18-byte handshake: consume the trailing `UInt16 3` sentinel
@@ -66,16 +67,18 @@ enum ServerFolderDownload {
                 continue
             }
 
-            // Build per-item payload: UInt32 itemFileSize + framed envelope.
+            // Build per-item payload: itemFileSize prefix + framed envelope.
+            // The prefix is 8 bytes (UInt64) on a large-file session, else
+            // the legacy 4 bytes (UInt32) — byte-identical to the historical
+            // form for ≤4 GiB items.
             let fileName = item.relativePath.last ?? ""
             let nameBytes = fileName.data(using: encoding, allowLossyConversion: true) ?? Data()
             let total = UploadFraming.totalSize(
                 nameLength: nameBytes.count,
-                dataLength: UInt32(item.data.count),
-                resourceLength: UInt32(item.resourceFork.count)
+                dataLength: UInt64(item.data.count),
+                resourceLength: UInt64(item.resourceFork.count)
             )
-            var sizePrefix = Data()
-            sizePrefix.appendBigEndian(total)
+            let sizePrefix = FolderUploadFraming.encodeItemSizePrefix(total, largeFile: largeFile)
             let framed = UploadFraming.encode(
                 fileName: fileName,
                 type: item.type,
