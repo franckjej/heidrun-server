@@ -19,7 +19,7 @@ public actor ClientSession {
     /// operator disabled it (master switch) — recording is then skipped
     /// everywhere. See the `audit(_:)` helper in `ClientSession+Audit`.
     let auditLog: AuditLog?
-    let stringEncoding: String.Encoding
+    private(set) var stringEncoding: String.Encoding
     let writer: @Sendable (Data) async throws -> Void
     let closer: @Sendable () async -> Void
 
@@ -640,14 +640,20 @@ public actor ClientSession {
     }
 
     private func handleLogin(header: PacketHeader, fields: [PacketField]) async {
-        let nick = fields.string(.nickname, encoding: stringEncoding) ?? "guest"
+        let clientCaps = CapabilityFlags(rawValue: fields.uint16(.capabilities) ?? 0)
+        // Option 2: the nickname rides the login packet (not a post-login TX
+        // 304). It's UTF-8 when the client advertised CAPABILITY_TEXT_ENCODING
+        // in this same packet, else macOS Roman. (login/password stay credential
+        // bytes; emoji is always UTF-8. The session-wide flip happens after the
+        // reply, below.)
+        let nickEncoding: String.Encoding = clientCaps.contains(.textEncoding) ? .utf8 : stringEncoding
+        let nick = fields.string(.nickname, encoding: nickEncoding) ?? "guest"
         let iconValue = fields.uint16(.icon) ?? 0
         let emojiValue = fields.string(.userEmoji, encoding: .utf8)
         let login = Self.obfuscatedString(.login, from: fields, encoding: stringEncoding) ?? ""
         let password = Self.obfuscatedString(.password, from: fields, encoding: stringEncoding) ?? ""
         self.clientVersion = fields.uint16(.clientVersion)
         self.supportsResourceForks = fields.uint8(.resourceForkSupport) == 1
-        let clientCaps = CapabilityFlags(rawValue: fields.uint16(.capabilities) ?? 0)
         self.negotiatedCaps = clientCaps.intersection(.supported)
         self.loginAt = Date()
 
@@ -722,6 +728,16 @@ public actor ClientSession {
             encoding: stringEncoding
         )
         try? await writer(reply)
+
+        // UTF-8 text-encoding (fogWraith CAPABILITY_TEXT_ENCODING): the login
+        // reply above stays macOS Roman; flip this session to UTF-8 for every
+        // subsequent decode/encode once the client negotiated it. (Broadcasts
+        // are encoded per the broadcasting session's encoding — fully correct
+        // for an all-UTF-8 population; mixed populations can mis-render
+        // non-ASCII broadcast content, see PROTOCOL-EXTENSIONS notes.)
+        if negotiatedCaps.contains(.textEncoding) {
+            self.stringEncoding = .utf8
+        }
 
         // User Access (TX 354): opt-in via `send_user_access`. Push the
         // account's privileges bitmap so HXD-style clients configure their

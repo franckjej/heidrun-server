@@ -254,6 +254,44 @@ struct ServerIntegrationTests {
         }
     }
 
+    @Test("UTF-8: a non-ASCII nickname and chat round-trip when textEncoding is negotiated")
+    func utf8NicknameAndChat() async throws {
+        try await ServerTestHelpers.withRunningServer { _, port in
+            // "café☕" exercises both a Latin accent (differs in macOS Roman)
+            // and an emoji (impossible in macOS Roman) — proving the login nick
+            // is decoded UTF-8 server-side and re-encoded for Bob's session.
+            let alice = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "café☕")
+            let bob = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Bob")
+            try await Task.sleep(for: .milliseconds(200))
+
+            let users = try await bob.fetchUserList()
+            #expect(users.contains { $0.nickname == "café☕" })
+
+            // A UTF-8 chat message survives the post-login encoding flip.
+            let bobReceives = Task { () -> String? in
+                for await event in bob.events {
+                    if case let .chatReceived(_, message, _) = event, message.contains("日本語") {
+                        return message
+                    }
+                }
+                return nil
+            }
+            try await alice.sendChat("こんにちは 日本語", in: nil, isAction: false)
+            let line = await withTaskGroup(of: String?.self) { group in
+                group.addTask {
+                    try? await Task.sleep(for: .seconds(2))
+                    bobReceives.cancel()
+                    return nil
+                }
+                group.addTask { await bobReceives.value }
+                let first = (await group.next()).flatMap { $0 }
+                group.cancelAll()
+                return first
+            }
+            #expect(line?.contains("日本語") == true)
+        }
+    }
+
     @Test("server pushes the configured agreement after login")
     func pushesAgreement() async throws {
         try await ServerTestHelpers.withRunningServer(
