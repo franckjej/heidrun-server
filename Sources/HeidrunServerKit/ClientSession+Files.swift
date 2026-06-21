@@ -21,6 +21,7 @@ extension ClientSession {
         try? await writer(PacketEncoder.fileListReply(
             taskNumber: header.taskNumber,
             entries: entries,
+            largeFile: largeFiles,
             encoding: stringEncoding
         ))
     }
@@ -137,6 +138,7 @@ extension ClientSession {
         try? await writer(PacketEncoder.fileInfoReply(
             taskNumber: header.taskNumber,
             info: info,
+            largeFile: largeFiles,
             encoding: stringEncoding
         ))
     }

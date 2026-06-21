@@ -508,19 +508,29 @@ enum PacketEncoder {
     static func fileListReply(
         taskNumber: UInt32,
         entries: [FileVault.Entry],
+        largeFile: Bool = false,
         encoding: String.Encoding
     ) -> Data {
-        let fields = entries.map { entry in
-            FileListEntryCodec.encode(
-                RemoteFile(
-                    name: entry.name,
-                    type: entry.type,
-                    creator: entry.creator,
-                    size: UInt64(entry.size),
-                    itemCount: entry.itemCount
-                ),
-                encoding: encoding
+        var fields: [PacketField] = []
+        fields.reserveCapacity(largeFile ? entries.count * 2 : entries.count)
+        for entry in entries {
+            let file = RemoteFile(
+                name: entry.name,
+                type: entry.type,
+                creator: entry.creator,
+                size: entry.size,
+                itemCount: entry.itemCount
             )
+            if largeFile {
+                // Interleave [legacy entry, fileSize64] per file so a
+                // large-file-aware client reads the authoritative 64-bit
+                // size while legacy clients ignore the companion field.
+                let encoded = FileListEntryCodec.encodeLargeFile(file, encoding: encoding)
+                fields.append(encoded.entry)
+                fields.append(encoded.size64)
+            } else {
+                fields.append(FileListEntryCodec.encode(file, encoding: encoding))
+            }
         }
         return PacketCodec.encode(
             classID: 1,
@@ -549,16 +559,22 @@ enum PacketEncoder {
     static func downloadFileReply(
         taskNumber: UInt32,
         transferID: UInt32,
-        transferSize: UInt32
+        transferSize: UInt32,
+        size64: UInt64? = nil
     ) -> Data {
-        PacketCodec.encode(
+        var fields: [PacketField] = [
+            PacketField.uint32(.transferID, transferID),
+            // Legacy 32-bit size clamps; large-file clients read xferSize64.
+            PacketField.uint32(.transferSize, UInt32(clamping: size64 ?? UInt64(transferSize)))
+        ]
+        if let size64 {
+            fields.append(PacketField.uint64(.xferSize64, size64))
+        }
+        return PacketCodec.encode(
             classID: 1,
             transactionID: 0, // downloadFile reply (was 202)
             taskNumber: taskNumber,
-            fields: [
-                PacketField.uint32(.transferID, transferID),
-                PacketField.uint32(.transferSize, transferSize)
-            ]
+            fields: fields
         )
     }
 
@@ -590,16 +606,21 @@ enum PacketEncoder {
     static func fileInfoReply(
         taskNumber: UInt32,
         info: FileVault.Info,
+        largeFile: Bool = false,
         encoding: String.Encoding
     ) -> Data {
         var out: [PacketField] = [
             PacketField.string(.fileName, info.entry.name, encoding: encoding),
             PacketField(key: .longFileType, data: LongFourCC.encode(info.entry.type)),
             PacketField(key: .longFileCreator, data: LongFourCC.encode(info.entry.creator)),
-            PacketField.uint32(.fileSize, info.entry.size),
+            // Legacy 32-bit size clamps; large-file clients read fileSize64.
+            PacketField.uint32(.fileSize, UInt32(clamping: info.entry.size)),
             HotlineDateField.encode(info.created, key: .fileCreationDate),
             HotlineDateField.encode(info.modified, key: .fileModificationDate)
         ]
+        if largeFile {
+            out.append(PacketField.uint64(.fileSize64, info.entry.size))
+        }
         if !info.comment.isEmpty {
             out.append(PacketField.string(.fileComment, info.comment, encoding: encoding))
         }

@@ -14,14 +14,14 @@ public actor FileVault {
         public var name: String
         public var type: HeidrunCore.FourCharCode
         public var creator: HeidrunCore.FourCharCode
-        public var size: UInt32
+        public var size: UInt64
         public var itemCount: UInt32
 
         public init(
             name: String,
             type: HeidrunCore.FourCharCode,
             creator: HeidrunCore.FourCharCode,
-            size: UInt32,
+            size: UInt64,
             itemCount: UInt32 = 0
         ) {
             self.name = name
@@ -518,7 +518,7 @@ public actor FileVault {
             )
         } else {
             let attributes = (try? fileManager.attributesOfItem(atPath: url.path)) ?? [:]
-            let size = UInt32(clamping: (attributes[.size] as? NSNumber)?.intValue ?? 0)
+            let size = UInt64(clamping: (attributes[.size] as? NSNumber)?.int64Value ?? 0)
             return Entry(
                 name: name,
                 type: HeidrunCore.FourCharCode.file,

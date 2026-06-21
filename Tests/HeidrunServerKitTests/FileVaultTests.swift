@@ -40,7 +40,7 @@ struct FileVaultTests {
     func infoForFile() async throws {
         let (vault, _) = try await makeVaultWithSeededFiles()
         let info = await vault.info(at: [], name: "readme.txt")
-        #expect(info?.entry.size == UInt32("hello world".utf8.count))
+        #expect(info?.entry.size == UInt64("hello world".utf8.count))
         #expect(info?.modified != .distantPast)
     }
 
