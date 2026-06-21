@@ -90,16 +90,27 @@ struct LargeFileDownloadSmokeTests {
                 dataForkOffset: 0,
                 resourceForkOffset: 0
             )
-            #expect(handle.totalSize == totalBytes,
-                "startDownload reply must report the 64-bit transfer size")
+            // This is a resource-fork-capable session, so the server sends
+            // the FILP/INFO/DATA/MACR envelope: the transfer size is the data
+            // fork PLUS ~150 bytes of framing, hence slightly larger than the
+            // raw file. It must still exceed the 32-bit cap (proving the
+            // 64-bit reply field) and carry at least the full payload.
+            #expect(handle.totalSize > 0xFFFF_FFFF,
+                "startDownload reply must report a 64-bit transfer size")
+            #expect(handle.totalSize >= totalBytes,
+                "framed envelope must be at least the raw file length")
 
             var receivedBytes: UInt64 = 0
             for try await chunk in networkClient.downloadStream(for: handle) {
                 receivedBytes += UInt64(chunk.count)
             }
 
+            // downloadStream yields the DECODED data fork (the FILP envelope
+            // is unwrapped client-side), so the byte count equals the raw file
+            // length — proving the full >4 GiB payload survived with no
+            // truncation at the 0xFFFF_FFFF boundary.
             #expect(receivedBytes == totalBytes,
-                "downloaded byte count must equal the full file length with no truncation")
+                "decoded data fork must equal the full file length with no truncation")
 
             await client.disconnect()
         }
