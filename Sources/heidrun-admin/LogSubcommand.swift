@@ -14,7 +14,8 @@ struct Log: AsyncParsableCommand {
 
     @OptionGroup var global: GlobalOptions
     @Flag(name: [.short, .long], help: "Follow: keep streaming until Ctrl-C.") var follow = false
-    @Option(help: "Backfill this many recent records first.") var lines = 50
+    @Option(name: [.customShort("n"), .long],
+            help: "Backfill this many recent records first (tail-style -n).") var lines = 50
     @Option(help: "audit | op | both.") var source = "both"
     @Option(name: [.long, .customLong("account")], help: "Filter by account login.") var user: String?
     @Option(help: "Minimum operational level (trace…critical).") var level: String?
