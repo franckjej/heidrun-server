@@ -4,6 +4,32 @@ The format follows [Keep a Changelog](https://keepachangelog.com/); the
 project adheres to [Semantic Versioning](https://semver.org/). Pre-1.0
 development happened on the `1.0.0-rcN` tag series.
 
+## [1.4.0] — 2026-06-21
+
+### Added
+- **Large-file transfers (> 4 GiB).** Single-file and folder downloads/uploads
+  now exceed the old 4 GiB cap when the client negotiates `CAPABILITY_LARGE_FILES`:
+  64-bit sizes, the 24-byte HTXF handshake, 64-bit fork headers, and an 8-byte
+  per-item size prefix in folder streams. Legacy clients are unaffected
+  (32-bit, byte-identical).
+- **UTF-8 text encoding.** When a client negotiates `CAPABILITY_TEXT_ENCODING`,
+  the session uses UTF-8 for all strings (chat, nicknames, file/folder names,
+  comments, news, topic) — so emoji and non-Latin scripts work. The login
+  nickname is decoded UTF-8 when advertised in the login packet; the session
+  flips after the login reply. Non-negotiating clients stay on macOS Roman.
+
+### Fixed
+- **> 4 GiB framed downloads no longer crash.** The download envelope is now
+  streamed in chunks (NIO's `ByteBuffer` is bounded to 32-bit indices), and
+  fork lengths thread through as `UInt64`.
+
+### Notes
+- Pins `heidrun-protocol` **1.0.0** (graduated from the rc series).
+- Known limitation: broadcasts are encoded once per the broadcasting session's
+  encoding — fully correct for an all-UTF-8 client population; a mixed
+  population with a legacy (non-UTF-8) client present can mis-render non-ASCII
+  broadcast content. Per-recipient broadcast encoding is a planned follow-up.
+
 ## [1.3.0] — 2026-06-21
 
 ### Added
