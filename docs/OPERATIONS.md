@@ -383,7 +383,7 @@ docker compose exec heidrun heidrun-admin log -f --table --level debug
 
 Columns: `TIME · S · LVL · HOST · NICK · ACCOUNT · ADMIN · TLS · TRANS · SOCK · TASK · FLDS · ACTION`.
 `NICK` is the display nickname; `ACCOUNT` is the login the user signed on with;
-`ADMIN` shows `yes` for admin accounts (blank otherwise).
+`ADMIN` is the account's admin flag (`true`/`false`, like `TLS`).
 `S` is the source (`a` audit / `o` operational); `ACTION` is a human-readable
 description — for a per-transaction `dispatch` row it shows the transaction
 name resolved from the numeric `TRANS` id (so a row with `TRANS` 107 shows

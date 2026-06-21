@@ -22,18 +22,18 @@ struct UnifiedLogTableTests {
         }
     }
 
-    @Test("ACCOUNT shows the login; ADMIN renders a compact marker")
+    @Test("ACCOUNT shows the login; ADMIN shows true/false like TLS")
     func accountAndAdmin() {
         let adminRow = UnifiedLogTableFormatter.row(opDispatch(transID: "107"))
         #expect(adminRow.contains("silver_box"))   // ACCOUNT = login
-        #expect(adminRow.contains("yes"))           // ADMIN compact marker (isAdmin=true)
+        #expect(adminRow.contains("true"))          // ADMIN = isAdmin true
 
         let nonAdmin = UnifiedLogRecord(op: NDJSONLogRecord(
             timestampMillis: 1_700_000, level: "info", label: "t", message: "dispatch",
             metadata: ["transID": "300", "login": "guest", "isAdmin": "false"], source: "t"))
         let nonAdminRow = UnifiedLogTableFormatter.row(nonAdmin)
         #expect(nonAdminRow.contains("guest"))      // ACCOUNT
-        #expect(!nonAdminRow.contains("yes"))       // ADMIN blank for non-admins
+        #expect(nonAdminRow.contains("false"))      // ADMIN = isAdmin false
     }
 
     @Test("a dispatch row resolves transID to the transaction name in ACTION")
