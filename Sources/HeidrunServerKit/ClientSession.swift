@@ -47,6 +47,13 @@ public actor ClientSession {
     /// single-file downloads ship the FILP envelope on the side
     /// channel (carrying the resource fork) or raw data-fork bytes.
     var supportsResourceForks: Bool = false
+    /// Protocol capabilities negotiated on TX 107: the intersection of the
+    /// client's advertised `capabilities` (field 0x01F0) and what this
+    /// build supports (`CapabilityFlags.supported`). Echoed back on the
+    /// login reply so the client knows the active set.
+    var negotiatedCaps: CapabilityFlags = []
+    /// `true` when the session negotiated the large-file (64-bit) extension.
+    var largeFiles: Bool { negotiatedCaps.contains(.largeFiles) }
     /// Wall-clock timestamp of the successful login. `nil` while still
     /// in handshake / pre-auth.
     var loginAt: Date?
@@ -640,6 +647,8 @@ public actor ClientSession {
         let password = Self.obfuscatedString(.password, from: fields, encoding: stringEncoding) ?? ""
         self.clientVersion = fields.uint16(.clientVersion)
         self.supportsResourceForks = fields.uint8(.resourceForkSupport) == 1
+        let clientCaps = CapabilityFlags(rawValue: fields.uint16(.capabilities) ?? 0)
+        self.negotiatedCaps = clientCaps.intersection(.supported)
         self.loginAt = Date()
 
         // Authenticate when a login was supplied. Empty login = guest.
@@ -709,6 +718,7 @@ public actor ClientSession {
             socketID: assigned,
             serverName: configuration.serverName,
             echoResourceForkSupport: self.supportsResourceForks,
+            capabilities: negotiatedCaps,
             encoding: stringEncoding
         )
         try? await writer(reply)

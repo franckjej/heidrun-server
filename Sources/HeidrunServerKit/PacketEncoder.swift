@@ -24,6 +24,7 @@ enum PacketEncoder {
         socketID: UInt16,
         serverName: String,
         echoResourceForkSupport: Bool = false,
+        capabilities: CapabilityFlags = [],
         encoding: String.Encoding
     ) -> Data {
         var fields: [PacketField] = [
@@ -33,6 +34,9 @@ enum PacketEncoder {
         ]
         if echoResourceForkSupport {
             fields.append(PacketField.uint8(.resourceForkSupport, 1))
+        }
+        if !capabilities.isEmpty {
+            fields.append(PacketField.uint16(.capabilities, capabilities.rawValue))
         }
         return PacketCodec.encode(
             classID: 1,
