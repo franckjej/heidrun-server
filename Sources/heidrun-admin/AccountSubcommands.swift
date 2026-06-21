@@ -32,7 +32,7 @@ struct Account: AsyncParsableCommand {
                 }
             }
             if let grant {
-                let parsed = PrivilegeNames.parse(grant)
+                let parsed = HeidrunServerKit.PrivilegeNames.parse(grant)
                 if !parsed.unknown.isEmpty {
                     throw ValidationError("Unknown privileges: \(parsed.unknown.joined(separator: ", "))")
                 }
@@ -108,8 +108,8 @@ struct Account: AsyncParsableCommand {
             let store = try global.openAccountStore()
             if list {
                 let account = try await AdminCommands.show(store: store, login: login)
-                let held = Set(PrivilegeNames.names(in: UserPrivileges(rawValue: account.permissions)))
-                for name in PrivilegeNames.allNames {
+                let held = Set(HeidrunServerKit.PrivilegeNames.names(in: UserPrivileges(rawValue: account.permissions)))
+                for name in HeidrunServerKit.PrivilegeNames.allNames {
                     print("\(held.contains(name) ? "[x]" : "[ ]") \(name)")
                 }
                 return
@@ -120,13 +120,13 @@ struct Account: AsyncParsableCommand {
             let updated = try await AdminCommands.editPrivileges(
                 store: store, login: login,
                 grant: grantBits, revoke: revokeBits, set: setBits)
-            let names = PrivilegeNames.names(in: UserPrivileges(rawValue: updated.permissions))
+            let names = HeidrunServerKit.PrivilegeNames.names(in: UserPrivileges(rawValue: updated.permissions))
             print("Privileges for '\(login)': " + (names.isEmpty ? "(none)" : names.joined(separator: ", ")))
         }
 
         private func parsePrivileges(_ csv: String?) throws -> UserPrivileges {
             guard let csv else { return [] }
-            let parsed = PrivilegeNames.parse(csv)
+            let parsed = HeidrunServerKit.PrivilegeNames.parse(csv)
             if !parsed.unknown.isEmpty {
                 throw ValidationError("Unknown privileges: \(parsed.unknown.joined(separator: ", "))")
             }

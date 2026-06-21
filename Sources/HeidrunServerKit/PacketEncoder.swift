@@ -512,7 +512,7 @@ enum PacketEncoder {
                     name: entry.name,
                     type: entry.type,
                     creator: entry.creator,
-                    size: entry.size,
+                    size: UInt64(entry.size),
                     itemCount: entry.itemCount
                 ),
                 encoding: encoding

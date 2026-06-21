@@ -137,7 +137,7 @@ struct FileWriteTests {
                 _ = try await client.startUpload(
                     at: RemotePath(components: []),
                     name: "notes.txt",
-                    size: UInt32(replacement.count),
+                    size: UInt64(replacement.count),
                     resume: false
                 )
                 Issue.record("expected startUpload to throw")
@@ -166,7 +166,7 @@ struct FileWriteTests {
             let handle = try await client.startUpload(
                 at: RemotePath(components: []),
                 name: "uploaded.txt",
-                size: UInt32(payload.count),
+                size: UInt64(payload.count),
                 resume: false
             )
             try await client.sendUpload(payload, for: handle, fileName: "uploaded.txt")
@@ -209,7 +209,7 @@ struct FileWriteTests {
             let handle = try await client.startUpload(
                 at: RemotePath(components: []),
                 name: "icon.icns",
-                size: UInt32(dataFork.count),
+                size: UInt64(dataFork.count),
                 resume: false
             )
             try await client.sendUpload(
@@ -246,7 +246,7 @@ struct FileWriteTests {
             let uploadHandle = try await client.startUpload(
                 at: RemotePath(components: []),
                 name: "DrayTekSyslog.bin",
-                size: UInt32(dataFork.count),
+                size: UInt64(dataFork.count),
                 resume: false
             )
             try await client.sendUpload(
