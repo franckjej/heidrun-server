@@ -4,6 +4,24 @@ The format follows [Keep a Changelog](https://keepachangelog.com/); the
 project adheres to [Semantic Versioning](https://semver.org/). Pre-1.0
 development happened on the `1.0.0-rcN` tag series.
 
+## [1.3.0] — 2026-06-21
+
+### Added
+- **`heidrun-admin log --table` ACCOUNT + ADMIN columns** — the login the user
+  signed on with, and the account's admin flag (`true`/`false`). The server now
+  logs `login` + `isAdmin` on the per-transaction `dispatch` line (masked
+  pre-login), so both columns populate on every row.
+- **`-n` short alias for `--lines`** on `heidrun-admin log` (tail-style).
+
+### Fixed
+- **Connection-shutdown race.** `stop()` now closes live connections and waits
+  for their per-connection session tasks to finish before tearing down the
+  event-loop group. This eliminates the NIO "Cannot schedule tasks on an
+  EventLoop that has already shut down" errors (and the warned-of future forced
+  crash), and makes the SIGTERM shutdown path clean.
+
+Pins heidrun-protocol `1.0.0-rc20`. Distribution: Docker + build-from-source.
+
 ## [1.2.1] — 2026-06-21
 
 ### Added

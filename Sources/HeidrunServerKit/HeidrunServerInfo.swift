@@ -13,7 +13,7 @@ import Foundation
 public enum HeidrunServerInfo {
     /// Semantic version of HeidrunServer. Bumped manually each
     /// release.
-    public static let version: String = "1.2.1"
+    public static let version: String = "1.3.0"
 
     /// Short build identifier — typically the 7-char git SHA. Lookup
     /// order:
