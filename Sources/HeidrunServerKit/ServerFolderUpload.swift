@@ -30,6 +30,7 @@ enum ServerFolderUpload {
         path: [String],
         name: String,
         itemCount: UInt16,
+        largeFile: Bool,
         encoding: String.Encoding
     ) async {
         // Ensure the folder root exists. Failures here are silent —
@@ -69,9 +70,13 @@ enum ServerFolderUpload {
                 continue
             }
 
-            // File: UInt32 size + framed envelope.
-            guard let sizeBytes = try? await stream.receiveExactly(4) else { return }
-            let size = readUInt32(sizeBytes)
+            // File: itemFileSize prefix + framed envelope. Large-file
+            // sessions carry an 8-byte UInt64 prefix; legacy a 4-byte
+            // UInt32. Guard the body length against Int.max so a bogus
+            // prefix can't trap the `Int(...)` conversion.
+            guard let sizeBytes = try? await stream.receiveExactly(largeFile ? 8 : 4) else { return }
+            let size: UInt64 = largeFile ? readUInt64(sizeBytes) : UInt64(readUInt32(sizeBytes))
+            guard size <= UInt64(Int.max) else { return }
             guard let payload = try? await stream.receiveExactly(Int(size)) else { return }
             guard let envelope = try? UploadFraming.decode(payload, encoding: encoding) else {
                 continue
@@ -151,5 +156,14 @@ enum ServerFolderUpload {
             | UInt32(data[base + 1]) << 16
             | UInt32(data[base + 2]) << 8
             | UInt32(data[base + 3])
+    }
+
+    private static func readUInt64(_ data: Data) -> UInt64 {
+        let base = data.startIndex
+        var value: UInt64 = 0
+        for offset in 0..<8 {
+            value = (value << 8) | UInt64(data[base + offset])
+        }
+        return value
     }
 }
