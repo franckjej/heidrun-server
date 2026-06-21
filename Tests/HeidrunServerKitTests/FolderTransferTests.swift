@@ -118,7 +118,7 @@ struct FolderTransferTests {
             let handle = try await networkClient.startFolderUpload(
                 at: RemotePath(components: []),
                 name: "Uploaded",
-                size: UInt32(dataFork.count),
+                size: UInt64(dataFork.count),
                 itemCount: UInt16(items.count),
                 resume: false
             )
@@ -148,8 +148,8 @@ struct FolderTransferTests {
                 FolderUploadItem(relativePath: ["sub"], isDirectory: true),
                 FolderUploadItem(relativePath: ["sub", "beta.txt"], isDirectory: false, data: beta)
             ]
-            let totalSize = items.reduce(UInt32(0)) { running, item in
-                running &+ UInt32(item.data.count)
+            let totalSize = items.reduce(UInt64(0)) { running, item in
+                running + UInt64(item.data.count)
             }
 
             let handle = try await networkClient.startFolderUpload(
