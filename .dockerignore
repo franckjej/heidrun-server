@@ -27,6 +27,7 @@ README.md
 docker-compose.yml
 Dockerfile
 .dockerignore
+Makefile
 
 .DS_Store
 .vscode
