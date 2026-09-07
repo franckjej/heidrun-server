@@ -42,7 +42,7 @@ struct LargeFileEncodingTests {
             encoding: .macOSRoman
         )
         let fields = decodeFields(reply)
-        #expect(fields.first(.capabilities) == nil)
+        #expect(!fields.contains { $0.key == HotlineObjectKey.capabilities.rawValue })
     }
 
     // MARK: - Task 12: 64-bit sizes
@@ -84,7 +84,7 @@ struct LargeFileEncodingTests {
         let fields = decodeFields(reply)
         #expect(fields.count == 1)
         #expect(fields[0].key == HotlineObjectKey.fileListEntry.rawValue)
-        #expect(fields.first(.fileSize64) == nil)
+        #expect(!fields.contains { $0.key == HotlineObjectKey.fileSize64.rawValue })
     }
 
     @Test("downloadFileReply(size64:) appends xferSize64 and clamps the legacy size")
@@ -111,7 +111,7 @@ struct LargeFileEncodingTests {
         )
         let fields = decodeFields(reply)
         #expect(fields.uint32(.transferSize) == 1234)
-        #expect(fields.first(.xferSize64) == nil)
+        #expect(!fields.contains { $0.key == HotlineObjectKey.xferSize64.rawValue })
     }
 
     // MARK: - Task 13: registry + 24-byte handshake
