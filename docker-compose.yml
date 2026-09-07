@@ -1,6 +1,6 @@
 # Convenience compose file for HeidrunServer.
 #
-# Run from this repo's root:
+# Run from this repo's root (`make up` / `make down` wrap these):
 #   docker compose up -d --build
 #
 # Stop:

@@ -40,13 +40,13 @@ RUN mkdir -p /out \
 # ──────────────────────────────────────────────────────────────────────────────
 # Build stage
 # ──────────────────────────────────────────────────────────────────────────────
-FROM swift:6.2-jammy AS build
+FROM swift:6.3.3-noble AS build
 
 # GRDB links system SQLite; the base image doesn't ship the dev
 # headers. `git` + `ca-certificates` let SPM clone HTTPS package
 # dependencies.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends \
+RUN apt-get update -q \
+ && apt-get install -qy --no-install-recommends \
         libsqlite3-dev \
         git \
         ca-certificates \
@@ -67,13 +67,19 @@ COPY Tests ./Tests
 # anonymously over HTTPS — the repo is public. Both the server and the
 # `heidrun-admin` CLI ship in the image (the second build reuses the
 # shared .build cache, so it only links the extra executable).
+# --static-swift-stdlib bakes the Swift runtime + Foundation into the
+# binaries so the runtime stage can be plain Ubuntu. The cache mounts
+# survive `docker compose build --no-cache` (see `make refresh`), so
+# a from-scratch image rebuild still gets an incremental Swift build.
 RUN --mount=type=cache,target=/root/.cache/org.swift.swiftpm \
     --mount=type=cache,target=/src/.build \
     swift build \
       --configuration release \
+      --static-swift-stdlib \
       --product HeidrunServer \
  && swift build \
       --configuration release \
+      --static-swift-stdlib \
       --product heidrun-admin \
  && install -m 0755 \
       .build/release/HeidrunServer \
@@ -85,17 +91,21 @@ RUN --mount=type=cache,target=/root/.cache/org.swift.swiftpm \
 # ──────────────────────────────────────────────────────────────────────────────
 # Runtime stage
 # ──────────────────────────────────────────────────────────────────────────────
-FROM swift:6.2-jammy-slim AS runtime
+FROM ubuntu:noble AS runtime
 
-# GRDB dlopens libsqlite3 at runtime; the slim image doesn't include
-# it. tzdata lets a `TZ=Area/City` (set via compose) resolve to a real
-# zone so news-post timestamps render in the operator's local time,
-# not UTC. netcat-openbsd provides the `nc` binary the compose
-# `healthcheck` probe uses (`nc -z 127.0.0.1 5500`); slim images
-# don't ship it by default and the probe silently failed forever
-# until we noticed the `unhealthy` status on a deployed container.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends libsqlite3-0 tzdata netcat-openbsd \
+# Plain Ubuntu: the binaries carry the Swift runtime statically.
+# apt-get upgrade: the ubuntu:noble tag is refreshed only every few
+# weeks, so pick up the security pocket at build time. `make refresh`
+# rebuilds with --pull --no-cache so this layer actually re-runs.
+#
+# libsqlite3-0: GRDB dlopens it. tzdata lets `TZ=Area/City` (set via
+# compose) resolve so news timestamps render in the operator's zone.
+# netcat-openbsd provides the `nc` the compose healthcheck probes with
+# (`nc -z 127.0.0.1 5500`).
+RUN apt-get update -q \
+ && apt-get upgrade -qy \
+ && apt-get install -qy --no-install-recommends \
+        ca-certificates libsqlite3-0 tzdata netcat-openbsd \
  && rm -rf /var/lib/apt/lists/*
 
 # A non-root account owns the state directories. /var/lib/heidrun
