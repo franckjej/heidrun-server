@@ -36,10 +36,14 @@ A Swift 6, pure-SwiftNIO Hotline-protocol server. Pairs with the [Heidrun](https
 ### Docker
 
 ```bash
-docker compose up -d --build
+make up          # docker compose up -d --build
+make logs        # follow the container log
+make down
 ```
 
 Defaults: control port `5500`, HTXF transfer `5501`, admin `admin` / `CHANGE_ME_BEFORE_FIRST_RUN` (see `docker-compose.yml` to set a real password before the first run).
+
+Nothing inside a running container updates itself. `make refresh` rebuilds the image without the layer cache so the runtime picks up Ubuntu's current security fixes; run it from a weekly cron — see [`docs/OPERATIONS.md`](docs/OPERATIONS.md#keeping-the-docker-image-current).
 
 ### Local (development)
 
@@ -105,6 +109,7 @@ Single `/` prefix only — `//foo` and a bare `/` fall through as normal chat. C
 
 | Image | Status |
 |---|---|
+| `swift:6.3.3-noble` (Ubuntu 24.04) | Builds + runs — the builder the shipped `Dockerfile` uses; runtime is plain `ubuntu:noble` with the Swift stdlib linked statically |
 | `swift:6.2-jammy` (Ubuntu 22.04) | Builds + runs |
 | `swift:6.2-noble` (Ubuntu 24.04) | Builds + runs |
 | `swift:6.0-jammy` | **Too old** — swift-log 1.12+ requires Swift 6.2 |

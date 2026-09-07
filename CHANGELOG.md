@@ -4,6 +4,17 @@ The format follows [Keep a Changelog](https://keepachangelog.com/); the
 project adheres to [Semantic Versioning](https://semver.org/). Pre-1.0
 development happened on the `1.0.0-rcN` tag series.
 
+## [Unreleased]
+
+### Changed
+- **Docker image:** builder is `swift:6.3.3-noble`; binaries link the Swift
+  stdlib statically and run on plain `ubuntu:noble`, which is `apt-get
+  upgrade`d at build time.
+- **Makefile:** `make build / test / lint / test-linux / up / down / logs`,
+  plus `make refresh` — rebuilds the image without the layer cache so the OS
+  packages inside it are current. Meant for a weekly cron
+  (`docs/OPERATIONS.md`).
+
 ## [1.4.0] — 2026-06-21
 
 ### Added

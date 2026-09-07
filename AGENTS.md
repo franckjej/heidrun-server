@@ -35,13 +35,13 @@ Pure SwiftPM — **no Xcode project**. Use `swift` directly.
 
 ```bash
 swift run HeidrunServer                                       # build + run locally
-swift build                                                   # build only
-swift test                                                    # Swift Testing — not XCTest
+make build / make test / make lint                            # swift build / swift test / swiftlint
 swift test --filter HeidrunServerKitTests.AccountStoreTests   # single suite
 swift package resolve                                         # refresh heidrun-protocol pin
 
-docker build -t heidrun-server .
-docker compose up -d --build
+make test-linux                                               # swift test inside swift:6.3.3-noble
+make up / make down / make logs                               # docker compose
+make refresh                                                  # rebuild image w/o cache (OS security updates), weekly cron
 ```
 
 ## Architecture

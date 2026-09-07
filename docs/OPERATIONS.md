@@ -55,6 +55,27 @@ Resolution order at runtime (first non-empty wins):
 
 A new commit invalidates only the small `git-info` stage; the multi-minute swift package resolve and the swift build stage stay cached.
 
+## Keeping the Docker image current
+
+Nothing inside a running container updates itself, and Docker's layer cache means a plain `docker compose up -d --build` reuses the runtime layer forever. `make refresh` does the whole cycle:
+
+```bash
+make refresh
+# = docker compose build --pull --no-cache   # fresh base tags + re-run apt-get upgrade
+#   docker compose up -d                     # recreate only if the image changed
+#   docker image prune -f                    # drop the superseded image
+```
+
+The `Dockerfile` runs `apt-get upgrade` in the runtime stage, so this rebuild picks up Ubuntu's current security pocket. The BuildKit cache mounts for SwiftPM survive `--no-cache`, so the Swift build stays incremental (a few minutes, not the 10–15 min cold build). Expect a few seconds of downtime while the container is recreated.
+
+Run it from a weekly cron on the host:
+
+```
+0 4 * * 1 cd /path/to/heidrun-server && make refresh >> /var/log/heidrun-refresh.log 2>&1
+```
+
+`trivy image heidrun-server:latest` shows what is still open afterwards.
+
 ## Default admin credentials
 
 On the very first startup against an empty database, the server seeds an account with `HEIDRUN_ADMIN_LOGIN` / `HEIDRUN_ADMIN_PASSWORD` (default `admin` / `admin`). After that, the env vars are **ignored** — the account exists. Use `modifyLogin` (transID 353) from a logged-in admin to change the password later.
