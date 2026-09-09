@@ -11,6 +11,11 @@ extension ClientSession {
             return
         }
         let path = filePath(from: fields)
+        if dropBoxHidden(path: path) {
+            await denyDropBox(taskNumber: header.taskNumber, transactionID: 200,
+                              target: path.joined(separator: "/"), auditsDownload: true)
+            return
+        }
         guard let entries = await files.list(at: path) else {
             try? await writer(PacketEncoder.errorReply(
                 taskNumber: header.taskNumber,
@@ -54,6 +59,11 @@ extension ClientSession {
         }
         guard hasPrivilege(.downloadFiles) else {
             await denyPrivilege(taskNumber: header.taskNumber, transactionID: 202, privilege: "downloadFiles")
+            return
+        }
+        if dropBoxHidden(path: path) {
+            await denyDropBox(taskNumber: header.taskNumber, transactionID: 202,
+                              target: displayPath(path, name: name), auditsDownload: true)
             return
         }
         guard let bytes = await files.bytes(at: path, name: name) else {
@@ -132,6 +142,11 @@ extension ClientSession {
             await denyPrivilege(taskNumber: header.taskNumber, transactionID: 206, privilege: "downloadFiles")
             return
         }
+        if dropBoxHidden(path: path) {
+            await denyDropBox(taskNumber: header.taskNumber, transactionID: 206,
+                              target: displayPath(path, name: name), auditsDownload: true)
+            return
+        }
         guard let info = await files.info(at: path, name: name) else {
             try? await writer(PacketEncoder.errorReply(
                 taskNumber: header.taskNumber,
@@ -164,6 +179,11 @@ extension ClientSession {
         }
         guard hasPrivilege(.downloadFolders) else {
             await denyPrivilege(taskNumber: header.taskNumber, transactionID: 210, privilege: "downloadFolders")
+            return
+        }
+        if dropBoxHidden(path: path, name: name) {
+            await denyDropBox(taskNumber: header.taskNumber, transactionID: 210,
+                              target: displayPath(path, name: name), auditsDownload: true)
             return
         }
         guard let items = await files.enumerate(at: path, name: name) else {
@@ -486,6 +506,44 @@ extension ClientSession {
             return []
         }
         return path.components
+    }
+
+    /// `true` when `path` (plus `name`, when given) is at or below the
+    /// contents of a drop box AND the session may not view drop boxes.
+    /// The drop box folder itself is addressed by its *parent* path, so
+    /// name-bearing transactions pass only `path` — except folder
+    /// download (210), which would ship the whole contents.
+    fileprivate func dropBoxHidden(path: [String], name: String? = nil) -> Bool {
+        guard !hasPrivilege(.viewDropBoxes) else { return false }
+        var components = path
+        if let name { components.append(name) }
+        return RemotePath(components: components).containsDropBox
+    }
+
+    /// Refuse a transaction that touches hidden drop-box contents.
+    /// `auditsDownload` records a denied download for read transactions;
+    /// mutations only hit the operational log.
+    fileprivate func denyDropBox(
+        taskNumber: UInt32,
+        transactionID: UInt16,
+        target: String,
+        auditsDownload: Bool
+    ) async {
+        if auditsDownload {
+            await audit(.download, target: target, result: "denied", detail: "drop box")
+        }
+        serverLogger.info("drop box access denied", metadata: [
+            "nickname": "\(nickname)",
+            "socketID": "\(socketID)",
+            "transaction": "\(transactionID)",
+            "path": "\(target)"
+        ])
+        try? await writer(PacketEncoder.errorReply(
+            taskNumber: taskNumber,
+            transactionID: transactionID,
+            message: "This is a drop box. You can upload into it but cannot view its contents.",
+            encoding: stringEncoding
+        ))
     }
 
     /// Format a path + file name for human-readable error messages
