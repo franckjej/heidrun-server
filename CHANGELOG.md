@@ -4,7 +4,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/); the
 project adheres to [Semantic Versioning](https://semver.org/). Pre-1.0
 development happened on the `1.0.0-rcN` tag series.
 
-## [Unreleased]
+## [1.5.0] — 2026-09-09
 
 ### Added
 - **Drop boxes and upload folders.** Folders named `…upload…` / `…drop box…`
@@ -22,6 +22,9 @@ development happened on the `1.0.0-rcN` tag series.
   plus `make refresh` — rebuilds the image without the layer cache so the OS
   packages inside it are current. Meant for a weekly cron
   (`docs/OPERATIONS.md`).
+
+### Notes
+- Pins `heidrun-protocol` **1.1.0** (adds `FolderRole`).
 
 ## [1.4.0] — 2026-06-21
 
