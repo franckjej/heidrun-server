@@ -58,6 +58,15 @@ struct DropBoxTests {
         }
     }
 
+    private func editor(port: UInt16) async throws -> any HotlineClient {
+        let adminClient = try await admin(port: port)
+        try await adminClient.createLogin(
+            name: "editor", password: "editor-pw", nickname: "Editor",
+            privileges: [.downloadFiles, .deleteFiles, .renameFiles, .moveFiles, .makeAliases])
+        return try await ServerTestHelpers.connectAndLogin(
+            port: port, nickname: "Editor", loginName: "editor", password: "editor-pw")
+    }
+
     // MARK: Reads
 
     @Test("the drop box folder itself is listed in its parent")
@@ -130,6 +139,71 @@ struct DropBoxTests {
             let client = try await admin(port: port)
             let entries = try await client.listFiles(at: ["Drop Box"])
             #expect(Set(entries.map(\.name)) == ["secret.txt", "Inner"])
+        }
+    }
+
+    // MARK: Mutations
+
+    @Test("deleting a file inside a drop box without viewDropBoxes is refused and the file survives")
+    func deleteRefused() async throws {
+        try await withDropBoxServer { port, rootURL in
+            let client = try await editor(port: port)
+            _ = await refusalMessage { try await client.deleteEntry(at: ["Drop Box"], name: "secret.txt") }
+            _ = try await client.listFiles(at: [])   // barrier
+            #expect(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("Drop Box/secret.txt").path))
+        }
+    }
+
+    @Test("renaming inside a drop box without viewDropBoxes leaves the file untouched")
+    func renameRefused() async throws {
+        try await withDropBoxServer { port, rootURL in
+            let client = try await editor(port: port)
+            try await client.updateFileMetadata(
+                at: ["Drop Box"], name: "secret.txt", change: .rename(newName: "leaked.txt"))
+            _ = try await client.listFiles(at: [])   // barrier
+            #expect(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("Drop Box/secret.txt").path))
+            #expect(!FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("Drop Box/leaked.txt").path))
+        }
+    }
+
+    @Test("moving a file out of a drop box without viewDropBoxes is refused; moving one in is allowed")
+    func moveGate() async throws {
+        try await withDropBoxServer { port, rootURL in
+            let client = try await editor(port: port)
+            try Data("incoming".utf8).write(to: rootURL.appendingPathComponent("Public/incoming.txt"))
+            let message = await refusalMessage {
+                try await client.moveEntry(from: ["Drop Box"], name: "secret.txt", to: ["Public"])
+            }
+            #expect(message?.contains("drop box") == true)
+            try await client.moveEntry(from: ["Public"], name: "incoming.txt", to: ["Drop Box"])
+            _ = try await client.listFiles(at: [])   // barrier
+            #expect(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("Drop Box/secret.txt").path))
+            #expect(!FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("Public/secret.txt").path))
+            #expect(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("Drop Box/incoming.txt").path))
+        }
+    }
+
+    @Test("aliasing a file inside a drop box without viewDropBoxes is refused; aliasing the drop box folder itself works")
+    func aliasGate() async throws {
+        try await withDropBoxServer { port, rootURL in
+            let client = try await editor(port: port)
+            try await client.makeAlias(from: ["Drop Box"], name: "secret.txt", to: ["Public"])
+            try await client.makeAlias(from: [], name: "Drop Box", to: ["Public"])
+            _ = try await client.listFiles(at: [])   // barrier
+            #expect(!FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("Public/secret.txt").path))
+            let publicEntries = try await client.listFiles(at: ["Public"])
+            #expect(publicEntries.contains(where: { $0.name == "Drop Box" }))
+        }
+    }
+
+    @Test("renaming the drop box folder itself follows normal folder privileges")
+    func renameDropBoxFolderItself() async throws {
+        try await withDropBoxServer { port, rootURL in
+            let client = try await admin(port: port)
+            try await client.updateFileMetadata(
+                at: [], name: "Drop Box", change: .rename(newName: "Team Drop Box"))
+            _ = try await client.listFiles(at: [])   // barrier
+            #expect(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("Team Drop Box").path))
         }
     }
 }

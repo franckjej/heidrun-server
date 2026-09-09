@@ -343,6 +343,11 @@ extension ClientSession {
                                 privilege: isFolder ? "deleteFolders" : "deleteFiles")
             return
         }
+        if dropBoxHidden(path: path) {
+            await denyDropBox(taskNumber: header.taskNumber, transactionID: 204,
+                              target: displayPath(path, name: name), auditsDownload: false)
+            return
+        }
         let ok = await files.delete(at: path, name: name)
         if ok {
             try? await writer(PacketEncoder.emptyReply(
@@ -399,6 +404,11 @@ extension ClientSession {
             return
         }
         let isFolder = await files.isFolder(at: path, name: name) == true
+        if dropBoxHidden(path: path) {
+            await denyDropBox(taskNumber: header.taskNumber, transactionID: 207,
+                              target: displayPath(path, name: name), auditsDownload: false)
+            return
+        }
         var currentName = name
         if let newName = fields.string(.fileRename, encoding: stringEncoding), !newName.isEmpty {
             guard hasPrivilege(isFolder ? .renameFolders : .renameFiles) else {
@@ -455,6 +465,11 @@ extension ClientSession {
                                 privilege: isFolder ? "moveFolders" : "moveFiles")
             return
         }
+        if dropBoxHidden(path: sourcePath) {
+            await denyDropBox(taskNumber: header.taskNumber, transactionID: 208,
+                              target: displayPath(sourcePath, name: name), auditsDownload: false)
+            return
+        }
         let ok = await files.move(from: sourcePath, name: name, to: destinationPath)
         if ok {
             try? await writer(PacketEncoder.emptyReply(
@@ -484,6 +499,11 @@ extension ClientSession {
         }
         guard hasPrivilege(.makeAliases) else {
             await denyPrivilege(taskNumber: header.taskNumber, transactionID: 209, privilege: "makeAliases")
+            return
+        }
+        if dropBoxHidden(path: sourcePath) {
+            await denyDropBox(taskNumber: header.taskNumber, transactionID: 209,
+                              target: displayPath(sourcePath, name: name), auditsDownload: false)
             return
         }
         let ok = await files.makeAlias(from: sourcePath, name: name, to: destinationPath)
