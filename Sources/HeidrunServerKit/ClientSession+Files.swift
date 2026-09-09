@@ -239,6 +239,11 @@ extension ClientSession {
             await denyPrivilege(taskNumber: header.taskNumber, transactionID: 213, privilege: "uploadFolders")
             return
         }
+        guard uploadLocationAllowed(path: path) else {
+            await denyUploadLocation(taskNumber: header.taskNumber, transactionID: 213,
+                                     target: displayPath(path, name: name))
+            return
+        }
         let itemCount = fields.uint16(.folderItemCount) ?? 0
         let transferID = await transfers.registerFolderUpload(
             path: path,
@@ -282,6 +287,11 @@ extension ClientSession {
         }
         guard hasPrivilege(.uploadFiles) else {
             await denyPrivilege(taskNumber: header.taskNumber, transactionID: 203, privilege: "uploadFiles")
+            return
+        }
+        guard uploadLocationAllowed(path: path) else {
+            await denyUploadLocation(taskNumber: header.taskNumber, transactionID: 203,
+                                     target: displayPath(path, name: name))
             return
         }
         // Large-file clients declare the upload size as a 64-bit field;
@@ -562,6 +572,32 @@ extension ClientSession {
             taskNumber: taskNumber,
             transactionID: transactionID,
             message: "This is a drop box. You can upload into it but cannot view its contents.",
+            encoding: stringEncoding
+        ))
+    }
+
+    /// Without `uploadAnywhere`, uploads may only land under an upload
+    /// folder or a drop box (`RemotePath.isUploadTarget`).
+    fileprivate func uploadLocationAllowed(path: [String]) -> Bool {
+        hasPrivilege(.uploadAnywhere) || RemotePath(components: path).isUploadTarget
+    }
+
+    fileprivate func denyUploadLocation(
+        taskNumber: UInt32,
+        transactionID: UInt16,
+        target: String
+    ) async {
+        await audit(.upload, target: target, result: "denied", detail: "not an upload folder")
+        serverLogger.info("upload location denied", metadata: [
+            "nickname": "\(nickname)",
+            "socketID": "\(socketID)",
+            "transaction": "\(transactionID)",
+            "path": "\(target)"
+        ])
+        try? await writer(PacketEncoder.errorReply(
+            taskNumber: taskNumber,
+            transactionID: transactionID,
+            message: "Uploads are only allowed into upload folders and drop boxes.",
             encoding: stringEncoding
         ))
     }

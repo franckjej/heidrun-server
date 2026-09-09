@@ -67,6 +67,17 @@ struct DropBoxTests {
             port: port, nickname: "Editor", loginName: "editor", password: "editor-pw")
     }
 
+    private func uploader(port: UInt16, anywhere: Bool) async throws -> any HotlineClient {
+        let adminClient = try await admin(port: port)
+        var privileges: UserPrivileges = [.downloadFiles, .uploadFiles, .uploadFolders]
+        if anywhere { privileges.insert(.uploadAnywhere) }
+        let login = anywhere ? "roamer" : "uploader"
+        try await adminClient.createLogin(
+            name: login, password: "pw", nickname: login, privileges: privileges)
+        return try await ServerTestHelpers.connectAndLogin(
+            port: port, nickname: login, loginName: login, password: "pw")
+    }
+
     // MARK: Reads
 
     @Test("the drop box folder itself is listed in its parent")
@@ -204,6 +215,56 @@ struct DropBoxTests {
                 at: [], name: "Drop Box", change: .rename(newName: "Team Drop Box"))
             _ = try await client.listFiles(at: [])   // barrier
             #expect(FileManager.default.fileExists(atPath: rootURL.appendingPathComponent("Team Drop Box").path))
+        }
+    }
+
+    // MARK: Upload Anywhere
+
+    @Test("without uploadAnywhere, uploading into a plain folder is refused")
+    func uploadIntoPlainFolderRefused() async throws {
+        try await withDropBoxServer { port, _ in
+            let client = try await uploader(port: port, anywhere: false)
+            let message = await refusalMessage {
+                _ = try await client.startUpload(at: ["Public"], name: "x.txt", size: 1, resume: false)
+            }
+            #expect(message?.contains("upload folders") == true)
+        }
+    }
+
+    @Test("without uploadAnywhere, uploads into an upload folder, a nested subfolder of it, and a drop box are accepted")
+    func uploadIntoUploadTargetsAccepted() async throws {
+        try await withDropBoxServer { port, _ in
+            let client = try await uploader(port: port, anywhere: false)
+            for path in [RemotePath(components: ["Uploads"]),
+                         RemotePath(components: ["Uploads", "2026"]),
+                         RemotePath(components: ["Drop Box"])] {
+                let handle = try await client.startUpload(at: path, name: "x.txt", size: 1, resume: false)
+                #expect(handle.transferID != 0)
+            }
+        }
+    }
+
+    @Test("without uploadAnywhere, a folder upload into a plain folder is refused but into an upload folder is accepted")
+    func folderUploadGate() async throws {
+        try await withDropBoxServer { port, _ in
+            let client = try await uploader(port: port, anywhere: false)
+            let message = await refusalMessage {
+                _ = try await client.startFolderUpload(
+                    at: ["Public"], name: "Stuff", size: 1, itemCount: 1, resume: false)
+            }
+            #expect(message?.contains("upload folders") == true)
+            let handle = try await client.startFolderUpload(
+                at: ["Uploads"], name: "Stuff", size: 1, itemCount: 1, resume: false)
+            #expect(handle.transferID != 0)
+        }
+    }
+
+    @Test("with uploadAnywhere, uploading into a plain folder is accepted")
+    func uploadAnywhereAccepted() async throws {
+        try await withDropBoxServer { port, _ in
+            let client = try await uploader(port: port, anywhere: true)
+            let handle = try await client.startUpload(at: ["Public"], name: "x.txt", size: 1, resume: false)
+            #expect(handle.transferID != 0)
         }
     }
 }
