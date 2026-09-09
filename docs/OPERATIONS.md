@@ -120,6 +120,17 @@ Seed log:
 guest account seeded   login=guest permissions=0x18000103e04
 ```
 
+## Drop boxes and upload folders
+
+Folder roles come from the folder *name*, exactly as in Hotline 1.8: a name containing `upload` (any case) is an **upload folder**; otherwise a name containing `drop box` (any case) is a **drop box**. Nesting counts — everything under `Uploads/` or `Drop Box/` inherits the role. Create them like any folder (client "New Folder…" or on disk under `files_root`).
+
+- **View Drop Boxes** (bit 30): without it, a user may upload into a drop box but every read inside it — listing, file info, download, folder download — and every mutation of its contents (delete, rename, comment, move out, alias) is refused with `This is a drop box. You can upload into it but cannot view its contents.` The drop box folder itself still appears in its parent with its item count and follows the normal folder privileges.
+- **Upload Anywhere** (bit 25): without it, file and folder uploads are accepted only under an upload folder or a drop box (`Uploads are only allowed into upload folders and drop boxes.`). Creating folders is unaffected.
+
+**Upgrading from 1.4.x:** accounts that have *Upload Files* but not *Upload Anywhere* (the Heidrun client's "user" preset creates these) could previously upload everywhere. After this release they can upload only into upload folders and drop boxes. Either create an `Uploads` folder, or grant Upload Anywhere (`heidrun-admin`, or Admin → Privileges in the client). Guests are unaffected — the default guest row has no upload bits.
+
+Denied uploads and denied drop-box reads land in the audit log with `result=denied`.
+
 ## Ports
 
 | Cleartext | TLS (when configured) |

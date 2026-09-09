@@ -6,6 +6,14 @@ development happened on the `1.0.0-rcN` tag series.
 
 ## [Unreleased]
 
+### Added
+- **Drop boxes and upload folders.** Folders named `…upload…` / `…drop box…`
+  now carry their classic Hotline roles. `viewDropBoxes` gates every read and
+  mutation inside a drop box; `uploadAnywhere` limits uploads to upload
+  folders and drop boxes. Existing accounts with *Upload Files* but not
+  *Upload Anywhere* lose upload access to plain folders — see
+  `docs/OPERATIONS.md` → "Drop boxes and upload folders".
+
 ### Changed
 - **Docker image:** builder is `swift:6.3.3-noble`; binaries link the Swift
   stdlib statically and run on plain `ubuntu:noble`, which is `apt-get
