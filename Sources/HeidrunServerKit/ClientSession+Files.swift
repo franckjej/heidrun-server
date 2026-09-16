@@ -41,11 +41,9 @@ extension ClientSession {
     /// `.fileResumeInfo` (203) lets the client resume an aborted
     /// download — only the data-fork offset is honoured.
     ///
-    /// When the session negotiated `resourceForkSupport` AND the client
-    /// requested a fresh download (offset == 0), the side channel
-    /// instead ships the FILP/INFO/DATA/MACR envelope so the resource
-    /// fork (read from the `._<name>.rsrc` sidecar) travels with the
-    /// data fork.
+    /// The side channel always ships the FILP/INFO/DATA/MACR envelope
+    /// (the resource fork comes from the `._<name>.rsrc` sidecar), as
+    /// classic Hotline requires — regardless of `resourceForkSupport`.
     func handleDownloadFile(header: PacketHeader, fields: [PacketField]) async {
         let path = filePath(from: fields)
         guard let name = fields.string(.fileName, encoding: stringEncoding) else {
@@ -85,43 +83,31 @@ extension ClientSession {
         let offset: UInt64 = fields.uint64(.offset64) ?? UInt64(legacyResumeOffset)
         let remaining: UInt64 = offset >= UInt64(bytes.count) ? 0 : UInt64(bytes.count) - offset
 
-        // Negotiated single-file framing only kicks in for fresh
-        // downloads — resume + framing isn't a supported combo (the
-        // FILP envelope's INFO/MACR headers wouldn't make sense over a
-        // partial data fork; downloadEnvelope on the client side
-        // requires .framed handles).
-        if self.supportsResourceForks, offset == 0 {
-            let resourceFork = await files.resourceFork(at: path, name: name)
-            let metadata = await files.info(at: path, name: name)
-            let envelope = UploadFraming.encode(
-                fileName: name,
-                type: metadata?.entry.type ?? .file,
-                creator: metadata?.entry.creator ?? .unknown,
-                creationDate: metadata?.created ?? Date(),
-                modificationDate: metadata?.modified ?? Date(),
-                data: bytes,
-                resourceFork: resourceFork,
-                encoding: stringEncoding
-            )
-            let transferID = await transfers.registerFramedDownload(envelope: envelope)
-            await audit(.download, target: name, bytes: Int64(envelope.count), result: "granted")
-            let envelopeSize = UInt64(envelope.count)
-            try? await writer(PacketEncoder.downloadFileReply(
-                taskNumber: header.taskNumber,
-                transferID: transferID,
-                transferSize: UInt32(clamping: envelopeSize),
-                size64: largeFiles && envelopeSize > 0xFFFF_FFFF ? envelopeSize : nil
-            ))
-            return
-        }
-
-        let transferID = await transfers.registerDownload(bytes: bytes, offset: offset)
-        await audit(.download, target: name, bytes: Int64(bytes.count), result: "granted")
+        // Every Hotline client expects the FILP envelope on the side
+        // channel — fresh downloads get the whole file, resumes get a
+        // DATA fork sized to the remainder plus the full resource fork.
+        let resourceFork = await files.resourceFork(at: path, name: name)
+        let metadata = await files.info(at: path, name: name)
+        let prefix = UploadFraming.encodePrefix(
+            fileName: name,
+            type: metadata?.entry.type ?? .file,
+            creator: metadata?.entry.creator ?? .unknown,
+            creationDate: metadata?.created ?? Date(),
+            modificationDate: metadata?.modified ?? Date(),
+            dataLength: remaining,
+            encoding: stringEncoding
+        )
+        let suffix = UploadFraming.encodeSuffix(resourceFork: resourceFork)
+        let transferID = await transfers.registerDownload(
+            prefix: prefix, data: bytes, offset: offset, suffix: suffix
+        )
+        let envelopeSize = UInt64(prefix.count) + remaining + UInt64(suffix.count)
+        await audit(.download, target: name, bytes: Int64(envelopeSize), result: "granted")
         try? await writer(PacketEncoder.downloadFileReply(
             taskNumber: header.taskNumber,
             transferID: transferID,
-            transferSize: UInt32(clamping: remaining),
-            size64: largeFiles && remaining > 0xFFFF_FFFF ? remaining : nil
+            transferSize: UInt32(clamping: envelopeSize),
+            size64: largeFiles && envelopeSize > 0xFFFF_FFFF ? envelopeSize : nil
         ))
     }
 

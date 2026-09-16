@@ -140,9 +140,11 @@ struct LargeFileEncodingTests {
     func downloadRegistryRoundTrip() async {
         let bigOffset: UInt64 = 0x1_0000_0000
         let registry = TransferRegistry()
-        let transferID = await registry.registerDownload(bytes: Data([1, 2, 3]), offset: bigOffset)
+        let transferID = await registry.registerDownload(
+            prefix: Data(), data: Data([1, 2, 3]), offset: bigOffset, suffix: Data()
+        )
         let claimed = await registry.claim(transferID: transferID)
-        guard case let .download(_, offset) = claimed else {
+        guard case let .download(_, _, offset, _) = claimed else {
             Issue.record("expected a .download pending, got \(String(describing: claimed))")
             return
         }

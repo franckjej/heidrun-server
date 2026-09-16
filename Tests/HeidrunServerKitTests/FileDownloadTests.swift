@@ -102,14 +102,38 @@ struct FileDownloadTests {
         }
     }
 
-    @Test("resume forces the raw-bytes path even on framed sessions")
-    func resumeForcesRawBytesOnFramedSession() async throws {
+    @Test("a classic client that never sends 0xE002 still receives the FILP envelope")
+    func classicClientGetsEnvelope() async throws {
+        try await withSeededFilesServer { _, port, rootURL in
+            let payload = Data("classic clients expect a flattened file object".utf8)
+            try payload.write(to: rootURL.appendingPathComponent("classic.txt"))
+
+            let client = try await RawHotlineClient.connect(port: port)
+            defer { client.close() }
+            _ = try await client.loginClassic(nickname: "Nostalgia")
+            let reply = try await client.send(transactionID: 202, fields: [
+                .string(.fileName, "classic.txt", encoding: .macOSRoman),
+                .path(.filePath, RemotePath(components: []), encoding: .macOSRoman)
+            ])
+            let transferID = try #require(reply.uint32(.transferID))
+            let transferSize = try #require(reply.uint32(.transferSize))
+            #expect(transferSize > UInt32(payload.count), "transferSize must cover the envelope, not just the data fork")
+
+            let wire = try await client.readTransfer(transferID: transferID, count: Int(transferSize))
+            #expect(wire.prefix(4) == Data("FILP".utf8))
+            let envelope = try UploadFraming.decode(wire)
+            #expect(envelope.data == payload)
+            #expect(envelope.fileName == "classic.txt")
+        }
+    }
+
+    @Test("resume ships a resumed envelope: the data-fork remainder plus the whole resource fork")
+    func resumeShipsResumedEnvelope() async throws {
         try await withSeededFilesServer { _, port, rootURL in
             let full = Data("0123456789abcdef".utf8)
-            // Seeding a sidecar to prove it would HAVE been included on
-            // a fresh download — but resume should bypass framing.
+            let resourceFork = Data([0xFF, 0xEE])
             try full.write(to: rootURL.appendingPathComponent("partial.bin"))
-            try Data([0xFF, 0xEE]).write(to: rootURL.appendingPathComponent("._partial.bin.rsrc"))
+            try resourceFork.write(to: rootURL.appendingPathComponent("._partial.bin.rsrc"))
 
             let client = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Frank")
             let handle = try await client.startDownload(
@@ -118,10 +142,9 @@ struct FileDownloadTests {
                 dataForkOffset: 8,
                 resourceForkOffset: 0
             )
-            // Offset > 0 disables framing per the contract — verify.
-            #expect(handle.framed == false)
             let received = try await drain(client.downloadStream(for: handle))
             #expect(received == Data("89abcdef".utf8))
+            #expect(await client.consumeResourceFork(for: handle.transferID) == resourceFork)
         }
     }
 

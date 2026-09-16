@@ -4,6 +4,16 @@ The format follows [Keep a Changelog](https://keepachangelog.com/); the
 project adheres to [Semantic Versioning](https://semver.org/). Pre-1.0
 development happened on the `1.0.0-rcN` tag series.
 
+## [1.5.1] — 2026-09-16
+
+### Fixed
+- **Single-file downloads always ship the flattened file object.** The server
+  sent a bare data fork unless the Heidrun-only `resourceForkSupport` flag was
+  negotiated, so classic clients (and Heidrun ≤ 1.4 against classic servers)
+  misread downloads. Fresh downloads, resumes (data-fork remainder + full
+  resource fork) and large files now all frame per the Hotline spec; the flag
+  is a no-op.
+
 ## [1.5.0] — 2026-09-09
 
 ### Added
