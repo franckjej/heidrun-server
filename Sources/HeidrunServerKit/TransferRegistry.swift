@@ -11,14 +11,12 @@ import Foundation
 /// entry is removed on retrieval so duplicate handshakes fail clean.
 public actor TransferRegistry {
     public enum Pending: Sendable {
-        case download(bytes: Data, offset: UInt64)
-        /// Pre-assembled FILP/INFO/DATA/MACR envelope for a single-file
-        /// download against a session that negotiated
-        /// `resourceForkSupport` (Heidrun extension 0xE002). Built once
-        /// at TX 202 handler time and streamed unchanged on the side
-        /// channel — the HTXF handler doesn't need to know about
-        /// framing, it just writes the bytes.
-        case framedDownload(envelope: Data)
+        /// Single-file download as the FILP envelope every Hotline
+        /// client expects: `prefix` (FILP + INFO + DATA header, sized
+        /// to the remainder), the data fork from `offset`, then `suffix`
+        /// (MACR header + resource fork). Kept in three pieces so the
+        /// side channel streams the file without copying it.
+        case download(prefix: Data, data: Data, offset: UInt64, suffix: Data)
         case upload(path: [String], name: String, declaredSize: UInt64, resume: Bool)
         /// Server-driven folder download — the enumerated items live
         /// in-memory the same way single-file downloads do (read once
@@ -43,22 +41,11 @@ public actor TransferRegistry {
 
     /// Register a pending download. Returns the allocated transferID
     /// that the control-channel reply carries back to the client.
-    public func registerDownload(bytes: Data, offset: UInt64) -> UInt32 {
+    public func registerDownload(prefix: Data, data: Data, offset: UInt64, suffix: Data) -> UInt32 {
         let assigned = nextID
         nextID &+= 1
         if nextID == 0 { nextID = 1 }                    // skip 0; treat as "no transfer"
-        pending[assigned] = .download(bytes: bytes, offset: offset)
-        return assigned
-    }
-
-    /// Register a framed single-file download. `envelope` is the
-    /// complete FILP/INFO/DATA/MACR byte stream built at the control-
-    /// channel handler — the HTXF handler writes it through unchanged.
-    public func registerFramedDownload(envelope: Data) -> UInt32 {
-        let assigned = nextID
-        nextID &+= 1
-        if nextID == 0 { nextID = 1 }
-        pending[assigned] = .framedDownload(envelope: envelope)
+        pending[assigned] = .download(prefix: prefix, data: data, offset: offset, suffix: suffix)
         return assigned
     }
 

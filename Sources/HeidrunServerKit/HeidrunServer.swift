@@ -736,33 +736,23 @@ public actor HeidrunServer {
                 encoding: String.Encoding.macOSRoman
             )
             return
-        case let .download(bytes, offset):
-            let outChannel = channelBox.value
-            let start = min(Int(clamping: offset), bytes.count)
-            let tail = bytes.suffix(from: bytes.startIndex.advanced(by: start))
-            let chunkSize = 16 * 1024
-            var current = tail.startIndex
-            while current < tail.endIndex {
-                let end = tail.index(current, offsetBy: chunkSize, limitedBy: tail.endIndex) ?? tail.endIndex
-                var buffer = outChannel.allocator.buffer(capacity: chunkSize)
-                buffer.writeBytes(tail[current..<end])
-                try? await outChannel.writeAndFlush(buffer).get()
-                current = end
-            }
-        case let .framedDownload(envelope):
-            // Negotiated single-file download — the FILP envelope was
-            // pre-assembled at the control-channel handler; stream it
-            // through to the client in the same 16 KiB cadence as raw
-            // downloads so a slow link sees usable progress.
+        case let .download(prefix, data, offset, suffix):
+            // FILP envelope in three pieces; the data fork streams from
+            // the resume offset in 16 KiB writes so a slow link sees
+            // usable progress.
             let outChannel = channelBox.value
             let chunkSize = 16 * 1024
-            var current = envelope.startIndex
-            while current < envelope.endIndex {
-                let end = envelope.index(current, offsetBy: chunkSize, limitedBy: envelope.endIndex) ?? envelope.endIndex
-                var buffer = outChannel.allocator.buffer(capacity: chunkSize)
-                buffer.writeBytes(envelope[current..<end])
-                try? await outChannel.writeAndFlush(buffer).get()
-                current = end
+            let start = min(Int(clamping: offset), data.count)
+            let tail = data.suffix(from: data.startIndex.advanced(by: start))
+            for piece in [prefix, Data(tail), suffix] {
+                var current = piece.startIndex
+                while current < piece.endIndex {
+                    let end = piece.index(current, offsetBy: chunkSize, limitedBy: piece.endIndex) ?? piece.endIndex
+                    var buffer = outChannel.allocator.buffer(capacity: chunkSize)
+                    buffer.writeBytes(piece[current..<end])
+                    try? await outChannel.writeAndFlush(buffer).get()
+                    current = end
+                }
             }
         case let .upload(path, name, declaredSize, resume):
             let pathDisplay = (path + [name]).joined(separator: "/")

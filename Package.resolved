@@ -15,8 +15,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/franckjej/heidrun-protocol.git",
       "state" : {
-        "revision" : "b1b79b74d9bbd76999bbc4c70ee22e320d09499e",
-        "version" : "1.1.0"
+        "revision" : "6b1e6c43cf4e1689a2e15d72f155b0913f1ad1a9",
+        "version" : "1.1.1"
       }
     },
     {
