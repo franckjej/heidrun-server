@@ -9,7 +9,7 @@ public enum AuditQueryParsing {
         switch keyword.lowercased() {
         case "transfer", "transfers": return [.upload, .download]
         case "auth":                  return [.loginOK, .loginFail]
-        case "admin":                 return [.accountCreate, .accountModify, .accountDelete, .kick, .broadcast, .topic]
+        case "admin":                 return [.accountCreate, .accountModify, .accountDelete, .kick, .broadcast, .topic, .newsReset]
         case "presence":              return [.join, .leave]
         default:                      return AuditEvent.Kind(rawValue: keyword.lowercased()).map { [$0] }
         }

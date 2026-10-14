@@ -9,7 +9,7 @@ struct AuditQueryParsingTests {
         #expect(AuditQueryParsing.kinds(forTypeKeyword: "auth") == [.loginOK, .loginFail])
         #expect(AuditQueryParsing.kinds(forTypeKeyword: "presence") == [.join, .leave])
         #expect(AuditQueryParsing.kinds(forTypeKeyword: "admin")
-                == [.accountCreate, .accountModify, .accountDelete, .kick, .broadcast, .topic])
+                == [.accountCreate, .accountModify, .accountDelete, .kick, .broadcast, .topic, .newsReset])
     }
 
     @Test("a single raw kind name maps to that one kind")
