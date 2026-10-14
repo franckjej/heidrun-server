@@ -65,6 +65,8 @@ extension ClientSession {
             await handleAuditCommand(command: command, args: args)
         case "kick":
             await handleKickCommand(args: args)
+        case "news":
+            await handleNewsCommand(args: args)
         case "invisible":
             await handleInvisibleCommand(args: args)
         case "visible":
@@ -295,6 +297,7 @@ extension ClientSession {
             "  /broadcast <text>   — server-wide broadcast popup (admin)",
             "  /topic [text]       — show or set the public chat topic (set: admin)",
             "  /kick <socketID>    — disconnect a user by socket (admin)",
+            "  /news clear <scope> — wipe flat, threaded, or all news (admin)",
             "  /invisible          — hide from peer user lists (admin)",
             "  /visible            — re-appear in peer user lists (admin)",
             "  /help               — show this list"
@@ -340,7 +343,7 @@ extension ClientSession {
         switch type {
         case "transfer", "transfers": return [.upload, .download]
         case "auth": return [.loginOK, .loginFail]
-        case "admin": return [.accountCreate, .accountModify, .accountDelete, .kick, .broadcast, .topic]
+        case "admin": return [.accountCreate, .accountModify, .accountDelete, .kick, .broadcast, .topic, .newsReset]
         case "presence": return [.join, .leave]
         default: return nil
         }
@@ -546,5 +549,23 @@ extension ClientSession {
             excluding: nil
         )
         await sendSystemReply("Topic set: \(text)")
+    }
+
+    /// `/news clear flat|threaded|all` — wipe news on the live server.
+    /// Goes through `NewsTree.reset`, so memory and the JSON snapshot
+    /// stay in sync. Gated on `.deleteNewsBundles`.
+    func handleNewsCommand(args: [String]) async {
+        guard hasPrivilege(.deleteNewsBundles) else {
+            await sendSystemReply("Permission denied: /news requires the deleteNewsBundles privilege.")
+            return
+        }
+        guard args.count == 2, args[0].lowercased() == "clear",
+              let scope = NewsResetScope(parsing: args[1]) else {
+            await sendSystemReply("Usage: /news clear flat|threaded|all")
+            return
+        }
+        await news.reset(scope)
+        await audit(.newsReset, target: scope.rawValue)
+        await sendSystemReply("News cleared (\(scope.rawValue)).")
     }
 }

@@ -14,6 +14,7 @@ public struct AuditEvent: Sendable, Hashable {
         case accountModify = "account_modify"
         case accountDelete = "account_delete"
         case kick, broadcast, topic
+        case newsReset = "news_reset"
     }
 
     public let timestamp: Date

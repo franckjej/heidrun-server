@@ -72,6 +72,7 @@ struct News: AsyncParsableCommand {
             guard proceed else { print("Aborted."); return }
             await AdminCommands.resetNews(path: configuration.newsStatePath, scope: resolved)
             print("News reset (\(resolved.rawValue)).")
+            print("Note: a running server keeps news in memory and rewrites this file on its next news change. Restart it, or use /news clear in chat instead.")
         }
     }
 }

@@ -661,9 +661,70 @@ struct ChatCommandsTests {
             try await alice.sendChat("/help", in: nil, isAction: false)
 
             let block = try await reply
-            for expected in ["/version", "/uptime", "/who", "/away", "/me", "/broadcast", "/kick", "/help"] {
+            for expected in ["/version", "/uptime", "/who", "/away", "/me", "/broadcast", "/kick", "/news", "/help"] {
                 #expect(block.contains(expected), "/help output should list \(expected)")
             }
+        }
+    }
+
+    @Test("/news clear flat wipes the live plain feed for an admin")
+    func newsClearFlat() async throws {
+        let configuration = ServerConfiguration(
+            port: 0,
+            newsSeed: NewsTree.Seed(plain: ["old post"]),
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin", password: "admin", nickname: "Admin"
+            )
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let admin = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin")
+            try await Task.sleep(for: .milliseconds(100))
+
+            async let reply = Self.awaitChat(admin) { $0.contains("News cleared") }
+            try await admin.sendChat("/news clear flat", in: nil, isAction: false)
+
+            let line = try await reply
+            #expect(line.contains("News cleared (flat)."))
+            #expect(try await admin.fetchNewsFeed().isEmpty)
+        }
+    }
+
+    @Test("/news clear from a guest is rejected and leaves the feed intact")
+    func newsClearGuestRejected() async throws {
+        let configuration = ServerConfiguration(
+            port: 0,
+            newsSeed: NewsTree.Seed(plain: ["old post"])
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let guest = try await ServerTestHelpers.connectAndLogin(port: port, nickname: "Snooper")
+            try await Task.sleep(for: .milliseconds(100))
+
+            async let reply = Self.awaitChat(guest) { $0.contains("Permission denied") }
+            try await guest.sendChat("/news clear all", in: nil, isAction: false)
+
+            let line = try await reply
+            #expect(line.contains("/news requires the deleteNewsBundles privilege"))
+            #expect(try await guest.fetchNewsFeed().contains("old post"))
+        }
+    }
+
+    @Test("/news with a bad scope surfaces a usage hint")
+    func newsClearUsageHint() async throws {
+        let configuration = ServerConfiguration(
+            port: 0,
+            bootstrapAdmin: ServerConfiguration.BootstrapAdmin(
+                login: "admin", password: "admin", nickname: "Admin"
+            )
+        )
+        try await ServerTestHelpers.withRunningServer(configuration: configuration) { _, port in
+            let admin = try await ServerTestHelpers.connectAndLogin(
+                port: port, nickname: "Admin", loginName: "admin", password: "admin")
+            try await Task.sleep(for: .milliseconds(100))
+
+            async let reply = Self.awaitChat(admin) { $0.contains("Usage: /news") }
+            try await admin.sendChat("/news clear everything", in: nil, isAction: false)
+            _ = try await reply
         }
     }
 }

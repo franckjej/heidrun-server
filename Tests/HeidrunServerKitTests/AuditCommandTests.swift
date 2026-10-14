@@ -9,7 +9,7 @@ struct AuditCommandTests {
         #expect(ClientSession.auditKinds(forType: "transfer") == [.upload, .download])
         #expect(ClientSession.auditKinds(forType: "auth") == [.loginOK, .loginFail])
         #expect(Set(ClientSession.auditKinds(forType: "admin")!) ==
-                [.accountCreate, .accountModify, .accountDelete, .kick, .broadcast, .topic])
+                [.accountCreate, .accountModify, .accountDelete, .kick, .broadcast, .topic, .newsReset])
         #expect(ClientSession.auditKinds(forType: "presence") == [.join, .leave])
         #expect(ClientSession.auditKinds(forType: "bogus") == nil)
     }
@@ -28,7 +28,7 @@ struct AuditCommandTests {
         #expect(ClientSession.parseAuditArgs(["--account", "alice"]).account == "alice")
         // A trailing flag with no value must not crash or consume past the end.
         let parsed = ClientSession.parseAuditArgs(["--type", "admin", "--limit"])
-        #expect(Set(parsed.kinds ?? []) == [.accountCreate, .accountModify, .accountDelete, .kick, .broadcast, .topic])
+        #expect(Set(parsed.kinds ?? []) == [.accountCreate, .accountModify, .accountDelete, .kick, .broadcast, .topic, .newsReset])
         #expect(parsed.limit == 50)               // dangling --limit left the default
     }
 

@@ -475,7 +475,7 @@ heidrun-admin account privileges bob --list
 # Offline audit query (same filters as the /audit chat command):
 heidrun-admin audit --type auth --user bob --since 7d
 
-# One-shot news wipe:
+# One-shot news wipe (server stopped; on a live server use `/news clear all` in chat):
 heidrun-admin news reset all --yes
 ```
 
