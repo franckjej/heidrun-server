@@ -36,7 +36,8 @@ A Swift 6, pure-SwiftNIO Hotline-protocol server. Pairs with the [Heidrun](https
 ### Docker
 
 ```bash
-make up          # docker compose up -d --build
+make help        # list all targets
+make up          # docker compose up -d --build (alias: make prod)
 make logs        # follow the container log
 make down
 ```
