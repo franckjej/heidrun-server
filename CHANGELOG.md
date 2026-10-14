@@ -4,6 +4,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/); the
 project adheres to [Semantic Versioning](https://semver.org/). Pre-1.0
 development happened on the `1.0.0-rcN` tag series.
 
+## [1.5.2] — 2026-10-14
+
+### Added
+- **`/news clear flat|threaded|all`** chat command wipes news on the live server (admin, `deleteNewsBundles`); audited as `news_reset`.
+
+### Changed
+- Plain-news posts end with a blank line and an underscore divider instead of dashes.
+- `heidrun-admin news reset` notes that a running server overwrites it.
+
 ## [1.5.1] — 2026-09-16
 
 ### Fixed
