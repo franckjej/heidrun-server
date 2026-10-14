@@ -45,8 +45,8 @@ extension ClientSession {
     }
 
     /// Render a plain-news post in the classic Hotline "BBS" style:
-    /// `From <nick> (<date>):`, a blank line, the body, then a trailing
-    /// underscore hairline. The hairline is part of the post (not just
+    /// `From <nick> (<date>):`, a blank line, the body, another blank
+    /// line, then a trailing underscore hairline. The hairline is part of the post (not just
     /// inserted by `plainFeed()` joins) so it rides along with the
     /// transID-102 push too — clients that prepend the pushed post show
     /// the separator immediately, without a reload. Newlines are
@@ -55,7 +55,7 @@ extension ClientSession {
         let normalizedBody = body
             .replacingOccurrences(of: "\r\n", with: "\r")
             .replacingOccurrences(of: "\n", with: "\r")
-        return "From \(nickname) (\(plainNewsDateString(date))):\r\r\(normalizedBody)\r\(NewsTree.plainNewsSeparator)"
+        return "From \(nickname) (\(plainNewsDateString(date))):\r\r\(normalizedBody)\r\r\(NewsTree.plainNewsSeparator)"
     }
 
     /// Classic Hotline news date with timezone, e.g.

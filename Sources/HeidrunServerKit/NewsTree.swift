@@ -59,9 +59,9 @@ public actor NewsTree {
         self.persistencePath = persistencePath
     }
 
-    /// Dashed "hairline" that trails each plain-news post, giving the
+    /// Underscore "hairline" that trails each plain-news post, giving the
     /// classic Hotline bulletin-board separator between entries.
-    static let plainNewsSeparator = String(repeating: "-", count: 58)
+    static let plainNewsSeparator = String(repeating: "_", count: 58)
 
     /// Plain news feed as one blob — posts newest-first. Each post already
     /// carries its trailing hairline (see `formatPlainNewsPost`), so this

@@ -76,8 +76,8 @@ struct PlainNewsTests {
         #expect(post.hasPrefix("From Alice ("))
         // `From <nick> (<date>):` then a blank line then the CR-normalised body.
         #expect(post.contains("):\r\rline1\rline2"))
-        // Hairline rides along with the post (so the push carries it too).
-        #expect(post.hasSuffix("\r\(NewsTree.plainNewsSeparator)"))
+        // Blank line, then the hairline rides along (so the push carries it too).
+        #expect(post.hasSuffix("line2\r\r\(NewsTree.plainNewsSeparator)"))
         #expect(!post.contains("\n"))
     }
 
@@ -119,9 +119,9 @@ struct PlainNewsTests {
         #expect(await allTree.children(at: [])?.isEmpty == true)
     }
 
-    @Test("hairline is a dashed line; plainFeed is newest-first")
+    @Test("hairline is an underscore line; plainFeed is newest-first")
     func feedHairline() async {
-        #expect(NewsTree.plainNewsSeparator.allSatisfy { $0 == "-" })
+        #expect(NewsTree.plainNewsSeparator.allSatisfy { $0 == "_" })
         let newest = ClientSession.formatPlainNewsPost(nickname: "B", body: "two", date: Date())
         let oldest = ClientSession.formatPlainNewsPost(nickname: "A", body: "one", date: Date())
         let tree = NewsTree(seed: NewsTree.Seed(plain: [oldest, newest]))
